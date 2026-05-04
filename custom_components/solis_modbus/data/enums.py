@@ -1,0 +1,73 @@
+from enum import Enum
+
+
+class PollSpeed(Enum):
+    ONCE = "once"
+    STARTUP = "startup"
+    FAST = "fast"
+    NORMAL = "normal"
+    SLOW = "slow"
+
+
+class InverterType(Enum):
+    HYBRID = "hybrid"
+    STRING = "string"
+    GRID = "grid"
+    ENERGY = "energy"
+    WAVESHARE = "waveshare"
+
+
+class InverterFeature(Enum):
+    PV = "pv"
+    BMS = "bms"
+    SMART_PORT = "smart_port"
+    BATTERY = "battery"
+    GRID = "grid"
+    GENERATOR = "generator"
+    V2 = "v2"
+    TCP = "tcp"
+    HV_BATTERY = "high_voltage_battery"
+    LV_BATTERY = "low_voltage_battery"
+    ZONNEPLAN = "zonneplan"
+    AC_COUPLING = "ac_coupling"
+    PARALLEL = "parallel"
+
+
+class Category(Enum):
+    BASIC_INFORMATION = "Basic Information"
+    PV_INFORMATION = "PV Information"
+    BATTERY_INFORMATION = "Battery Information"
+    AC_INFORMATION = "AC Information"
+    GRID_CODE_INFORMATION = "Grid Code Information"
+    STATUS_INFORMATION = "Status Information"
+    DEVICE_INTERNAL_DATA = "Device Internal Data"
+    LOAD_INFORMATION = "Load Information"
+    METER_INFORMATION = "Meter Information"
+    OTHER_INFORMATION = "Other Information"
+    FUNCTIONAL_INFORMATION = "Functional Information"
+    GENERATOR_INFORMATION = "Generator Information"
+    HISTORICAL_DATA = "Historical Data"
+    SMART_PORT_INFORMATION = "Smart port Information"
+    ENERGY_DATA = "Energy Data"
+
+    BASIC_SETTING = "Basic Setting"
+    BATTERY_SETTING = "Battery Setting"
+    AC_PORT_SETTING = "AC Port Setting"
+    GRID_CODE_SETTING = "Grid Code Setting"
+    POWER_CONTROL_SETTING = "Power Control Setting"
+    FUNCTIONAL_SETTING = "Functional Setting"
+    HYBRID_MODE_SETTING = "Hybrid Mode Setting"
+    BACKUP_PORT_SETTING = "Backup Port Setting"
+    REMOTE_CONTROL_SETTING = "Remote Control Setting"
+    SMART_PORT_SETTING = "Smart port Setting"
+    GENERATOR_SETTING = "Generator Setting"
+    HISTORY_DATA_QUERY_SETTING = "History Data Query Setting"
+    REMOTE_DISPATCH_SETTING = "Remote Dispatch Setting"
+
+
+class DataType(Enum):
+    U16 = "U16"
+    S16 = "S16"
+    U32 = "U32"
+    S32 = "S32"
+    STRING = "STRING"

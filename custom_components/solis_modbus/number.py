@@ -1,0 +1,33 @@
+import logging
+
+from homeassistant.config_entries import ConfigEntry
+
+from custom_components.solis_modbus import ModbusController
+from custom_components.solis_modbus.const import DOMAIN, NUMBER_ENTITIES
+from custom_components.solis_modbus.helpers import get_controller_from_entry
+from custom_components.solis_modbus.sensors.solis_number_sensor import SolisNumberEntity
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_devices):
+    """Set up the number platform."""
+    controller: ModbusController = get_controller_from_entry(hass, config_entry)
+    # We only want this platform to be set up via discovery.
+    _LOGGER.info("Options %s", len(config_entry.options))
+
+    platform_config = config_entry.data or {}
+    if len(config_entry.options) > 0:
+        platform_config = config_entry.options
+
+    _LOGGER.info(f"Solis platform_config: {platform_config}")
+
+    sensors: list[SolisNumberEntity] = []
+    for sensor_group in controller.sensor_groups:
+        for sensor in sensor_group.sensors:
+            if sensor.name != "reserve" and sensor.editable:
+                sensors.append(SolisNumberEntity(hass, sensor))
+    hass.data.setdefault(DOMAIN, {})[NUMBER_ENTITIES] = sensors
+    _LOGGER.info(f"Number entities = {len(sensors)}")
+    async_add_devices(sensors, True)
+    return True

@@ -1,0 +1,257 @@
+"""Sensor classes represent modbus registers for an inverter."""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+from mqtt_entity.utils import BOOL_OFF, BOOL_ON
+
+from sunsynk.helpers import (
+    RegType,
+    SSTime,
+    ValType,
+    hex_str,
+    pack_value,
+)
+from sunsynk.sensors import Sensor
+
+if TYPE_CHECKING:
+    from sunsynk.state import InverterState
+
+_LOG = logging.getLogger(__name__)
+
+
+@dataclass(slots=True, eq=False)
+class RWSensor(Sensor):
+    """Read & write sensor."""
+
+    def reg(self, *regs: int, msg: str = "") -> RegType:
+        """Check the registers are within the bitmask."""
+        if self.bitmask and regs[0] != (regs[0] & self.bitmask):
+            _LOG.error(
+                "Trying to set a register value outside the sensor's bitmask! sensor:%s regvalue:%s %s",
+                self.name,
+                regs,
+                msg,
+            )
+            return (regs[0] & self.bitmask, *regs[1:])
+        return regs
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value."""
+        raise NotImplementedError
+
+    def __post_init__(self, regs: RegType | int) -> None:
+        """Run post init."""
+        # Bare calls to super() are supported from Python 3.14+
+        super(RWSensor, self).__post_init__(regs)
+        if self.bitmask > 0 and len(self.address) != 1:
+            _LOG.fatal(
+                "Sensors with a bitmask should reference a single register! %s [registers=%s]",
+                self.name,
+                self.address,
+            )
+
+    @property
+    def dependencies(self) -> list[Sensor]:
+        """Dependencies."""
+        return []
+
+
+@dataclass(slots=True, eq=False)
+class NumberRWSensor(RWSensor):
+    """Numeric sensor which can be read and written."""
+
+    min: int | float | Sensor = 0
+    max: int | float | Sensor = 100
+
+    @property
+    def dependencies(self) -> list[Sensor]:
+        """Get a list of sensors upon which this sensor depends."""
+        return [s for s in (self.min, self.max) if isinstance(s, Sensor)]
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value."""
+        if not self.address:
+            raise NotImplementedError("Cannot write to a sensor with no address")
+        fval = float(value)  # type:ignore[arg-type]
+        minv = state.resolve_num(self.min, 0)
+        maxv = state.resolve_num(self.max, 100)
+        val = int(max(minv, min(maxv, fval)) / abs(self.factor))
+        return self.reg(
+            *pack_value(val, bits=len(self.address) * 16, signed=self.factor < 0)
+        )
+
+
+@dataclass(slots=True, eq=False)
+class SelectRWSensor(RWSensor):
+    """Sensor with a set of options to select from."""
+
+    options: dict[int, str] = field(default_factory=dict)
+    # switch: tuple[int, int] | None = None
+
+    # def __post_init__(self) -> None:
+    #     """Ensure correct parameters."""
+    #     if self.switch:
+    #         assert not self.options
+    #         assert len(self.switch) == 2
+    #         self.options = {self.switch[0]: "OFF", self.switch[1]: "ON"}
+
+    def available_values(self) -> list[str]:
+        """Get the available values for this sensor."""
+        return list(self.options.values())
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value, or the current reg value if out of range."""
+        value = str(value)
+        regs = [r for r, v in self.options.items() if v == value]
+        if regs:
+            return self.reg(regs[0])
+        _LOG.warning("Unknown %s", value)
+        current = state.get(self, "")
+        return self.value_to_reg(current, state)
+
+    def reg_to_value(self, regs: RegType) -> ValType:
+        """Decode the register."""
+        regsm = self.masked(regs)
+        res = self.options.get(regsm[0])
+        if res is None:
+            _LOG.warning("%s: Unknown register value %s", self.id, regsm[0])
+        return res
+
+
+@dataclass(slots=True, eq=False)
+class SwitchRWSensor0(SelectRWSensor):
+    """Switch Sensor. The original implementation."""
+
+    on: int = 1
+    """The register value representing ON."""
+    off: int = 0
+    """The register value representing OFF."""
+
+    def __post_init__(self, regs: RegType | int) -> None:
+        """Ensure correct parameters."""
+        super(SwitchRWSensor0, self).__post_init__(regs)
+        assert not self.options
+        assert self.on != self.off
+        self.options = {self.off: BOOL_OFF, self.on: BOOL_ON}
+        if self.bitmask:
+            if self.on is not None:
+                assert self.on & self.bitmask == self.on
+            assert self.off & self.bitmask == self.off
+
+
+@dataclass(slots=True, eq=False)
+class SwitchRWSensor(RWSensor):
+    """Switch. Similar to BinarySensor, but writeable."""
+
+    on: int | None = None
+    """The register value representing ON."""
+    off: int = 0
+    """The register value representing OFF."""
+
+    def __post_init__(self, regs: RegType | int) -> None:
+        """Ensure correct parameters."""
+        super(SwitchRWSensor, self).__post_init__(regs)
+        if self.bitmask:
+            if self.on is not None:
+                assert self.on & self.bitmask == self.on
+            assert self.off & self.bitmask == self.off
+
+    def reg_to_value(self, regs: RegType) -> ValType:
+        """Reg to value for binary."""
+        res = super(SwitchRWSensor, self).reg_to_value(regs)
+        if res is None:
+            return ""
+        if self.on is not None:
+            return res == self.on
+        return res != self.off
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value, or the current reg value if out of range."""
+        value = str(value)
+        if value == BOOL_ON:
+            return (self.on,) if self.on else self.masked((0xFF,))
+        if value != BOOL_OFF:
+            _LOG.warning("%s: ON/OFF expected, got %s", self.name, value)
+        return (self.off,)
+
+
+@dataclass(slots=True, eq=False)
+class SystemTimeRWSensor(RWSensor):
+    """Read & write time sensor."""
+
+    def __post_init__(self, regs: RegType | int) -> None:
+        """Run post init."""
+        super(RWSensor, self).__post_init__(regs)
+        if len(self.address) != 3:
+            raise ValueError("SystemTimeRWSensor requires exactly 3 registers")
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value."""
+        redt = re.compile(r"(2\d{3})-(\d{2})-(\d{2}) ([012]?\d{1}):(\d{2}):(\d{2})")
+        match = redt.fullmatch(str(value).strip())
+        if not match:
+            raise ValueError(f"Invalid datetime {value}")
+        y, m, d = int(match.group(1)) - 2000, int(match.group(2)), int(match.group(3))
+        h, mn, s = int(match.group(4)), int(match.group(5)), int(match.group(6))
+        regs = (
+            (y << 8) + m,
+            (d << 8) + h,
+            (mn << 8) + s,
+        )
+        msg = f"20{y:02}-{m:02}-{d:02} {h:02}:{mn:02}:{s:02}"
+        msg += f"==> Registers(ym, dh, ms):{hex_str(regs, address=self.address)}"
+        assert len(regs) == len(self.address)
+        _LOG.debug("Set date_time = %s", msg)
+        return regs
+
+    def reg_to_value(self, regs: RegType) -> ValType:
+        """Decode the register."""
+        y = ((regs[0] & 0xFF00) >> 8) + 2000
+        m = regs[0] & 0xFF
+        d = (regs[1] & 0xFF00) >> 8
+        h = regs[1] & 0xFF
+        mn = (regs[2] & 0xFF00) >> 8
+        s = regs[2] & 0xFF
+        return f"{y}-{m:02}-{d:02} {h}:{mn:02}:{s:02}"
+
+
+@dataclass(slots=True, eq=False)
+class TimeRWSensor(RWSensor):
+    """Extract the time."""
+
+    min: TimeRWSensor | None = None
+    max: TimeRWSensor | None = None
+
+    def available_values(self, step_minutes: int, state: InverterState) -> list[str]:
+        """Get the available values for this sensor."""
+        day = list(range(0, 24 * 60, step_minutes))
+        minv = SSTime(strv=str(state.get(self.min, "0:00"))).minutes if self.min else 0
+        maxv = SSTime(strv=str(state.get(self.max, "0:00"))).minutes if self.max else 0
+        if minv >= maxv:
+            maxv += 24 * 60
+        opt = [minv, *[v for v in day if (v > minv and v < maxv)], maxv]
+        val = SSTime(strv=str(state.get(self, "0:00"))).minutes
+        if val not in opt:
+            opt.append(val)
+        opt.sort()
+        return [SSTime(minutes=m).str_value for m in opt]
+
+    @property
+    def dependencies(self) -> list[Sensor]:
+        """Get a list of sensors upon which this sensor depends."""
+        return [s for s in (self.min, self.max) if isinstance(s, TimeRWSensor)]
+
+    def reg_to_value(self, regs: RegType) -> ValType:
+        """Decode the time from a register."""
+        return SSTime(regv=regs[0]).str_value
+
+    def value_to_reg(self, value: ValType, state: InverterState) -> RegType:
+        """Get the reg value from a display value."""
+        if not self.address:
+            raise NotImplementedError("Cannot write to a sensor with no address")
+        return self.reg(SSTime(strv=str(value)).reg_value)

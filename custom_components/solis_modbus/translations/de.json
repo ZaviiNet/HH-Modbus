@@ -1,0 +1,147 @@
+{
+  "title": "Solis Modbus",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbindungsmethode auswählen",
+        "description": "Wählen Sie, wie der Solis-Wechselrichter mit Home Assistant verbunden ist.",
+        "data": {
+          "connection_type": "Verbindungstyp"
+        }
+      },
+      "config": {
+        "title": "Wechselrichter-Konfiguration",
+        "description": "Bitte geben Sie die Modbus-Einstellungen für Ihren Wechselrichter ein.",
+        "data": {
+          "host": "IP-Adresse",
+          "port": "Port",
+          "slave": "Modbus Slave-ID",
+          "serial_port": "Serieller Port",
+          "baudrate": "Baudrate",
+          "bytesize": "Byte-Größe",
+          "parity": "Parität",
+          "stopbits": "Stoppbits",
+          "model": "Wechselrichtermodell",
+          "poll_interval_fast": "Schnelles Abfrageintervall (Sekunden)",
+          "poll_interval_normal": "Normales Abfrageintervall (Sekunden)",
+          "poll_interval_slow": "Langsames Abfrageintervall (Sekunden)",
+          "identification": "Identifikationsname",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Inverter",
+        "description": "Update the configuration for your Solis inverter.",
+        "data": {
+          "host": "IP-Adresse",
+          "port": "Port",
+          "slave": "Modbus Slave-ID",
+          "serial_port": "Serieller Port",
+          "baudrate": "Baudrate",
+          "bytesize": "Byte-Größe",
+          "parity": "Parität",
+          "stopbits": "Stoppbits",
+          "model": "Wechselrichtermodell",
+          "poll_interval_fast": "Schnelles Abfrageintervall (Sekunden)",
+          "poll_interval_normal": "Normales Abfrageintervall (Sekunden)",
+          "poll_interval_slow": "Langsames Abfrageintervall (Sekunden)",
+          "identification": "Identifikationsname",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen, bitte überprüfen Sie Ihre Einstellungen.",
+      "unknown": "Unerwarteter Fehler aufgetreten."
+    },
+    "abort": {
+      "already_configured": "Dieses Gerät ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Solis Modbus-Einstellungen ändern",
+        "description": "Ändern Sie die Einstellungen für Ihren Solis-Wechselrichter. (Neustart empfohlen)",
+        "data": {
+          "poll_interval_fast": "Schnelles Abfrageintervall (Sekunden)",
+          "poll_interval_normal": "Normales Abfrageintervall (Sekunden)",
+          "poll_interval_slow": "Langsames Abfrageintervall (Sekunden)",
+          "model": "Wechselrichtermodell",
+          "has_v2": "Auf Firmware V2 aktualisiert",
+          "has_pv": "Hat Photovoltaik (Solarpaneele)",
+          "has_battery": "Hat Batteriespeicher",
+          "has_hv_battery": "HV-Batteriespeicher (100 V+)",
+          "has_generator": "Hat Generator",
+          "phases": "Phasen",
+          "connection": "Verbindungstyp",
+          "inverter_serial": "Inverter Serial",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)"
+        }
+      }
+    }
+  },
+  "services": {
+    "solis_write_holding_register": {
+      "name": "Register schreiben",
+      "description": "Schreibt einen Wert in ein Register",
+      "fields": {
+        "address": {
+          "name": "Adresse",
+          "description": "Adresse zum Schreiben"
+        },
+        "value": {
+          "name": "Wert",
+          "description": "Wert zum Schreiben"
+        },
+        "host": {
+          "name": "Wechselrichter",
+          "description": "IP-Adresse des Wechselrichters (nur erforderlich, wenn mehrere Wechselrichter vorhanden sind)"
+        }
+      }
+    },
+    "solis_read_register": {
+      "name": "Register lesen",
+      "description": "Liest einen Wert aus einem Register",
+      "fields": {
+        "address": {
+          "name": "Adresse",
+          "description": "Adresse zum Lesen"
+        },
+        "host": {
+          "name": "Wechselrichter",
+          "description": "IP-Adresse des Wechselrichters (nur erforderlich, wenn mehrere Wechselrichter vorhanden sind)"
+        }
+      }
+    },
+    "solis_write_time": {
+      "name": "Zeit einer Entität ändern",
+      "description": "Setzt die Zeit der Entität auf die angegebene",
+      "fields": {
+        "entity_id": {
+          "name": "Entitäts-ID",
+          "description": "Entitäts-ID der Zeiteinheit, die Sie ändern möchten"
+        },
+        "time": {
+          "name": "Gewünschte Zeit",
+          "description": "Zeit im Format HH:MM oder HH:MM:SS"
+        }
+      }
+    }
+  }
+}

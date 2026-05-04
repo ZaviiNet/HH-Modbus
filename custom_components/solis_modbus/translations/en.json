@@ -1,0 +1,147 @@
+{
+  "title": "Solis Modbus",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Connection Method",
+        "description": "Choose how the Solis inverter is connected to Home Assistant.",
+        "data": {
+          "connection_type": "Connection Type"
+        }
+      },
+      "config": {
+        "title": "Inverter Configuration",
+        "description": "Please enter the Modbus settings for your inverter.",
+        "data": {
+          "host": "IP Address",
+          "port": "Port",
+          "slave": "Modbus Slave ID",
+          "serial_port": "Serial Port",
+          "baudrate": "Baud Rate",
+          "bytesize": "Byte Size",
+          "parity": "Parity",
+          "stopbits": "Stop Bits",
+          "model": "Inverter Model",
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "identification": "Identification Name",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Inverter",
+        "description": "Update the configuration for your Solis inverter.",
+        "data": {
+          "host": "IP Address",
+          "port": "Port",
+          "slave": "Modbus Slave ID",
+          "serial_port": "Serial Port",
+          "baudrate": "Baud Rate",
+          "bytesize": "Byte Size",
+          "parity": "Parity",
+          "stopbits": "Stop Bits",
+          "model": "Inverter Model",
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "identification": "Identification Name",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect, please check your settings.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modify Solis Modbus Settings",
+        "description": "Change the settings for your Solis inverter. (restart required)",
+        "data": {
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "model": "Inverter Model",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator",
+          "phases": "Phases",
+          "connection": "Connection Type",
+          "inverter_serial": "Inverter Serial"
+        }
+      }
+    }
+  },
+  "services": {
+    "solis_write_holding_register": {
+      "name": "Write holding register",
+      "description": "Writes a value to a holding register",
+      "fields": {
+        "address": {
+          "name": "Address",
+          "description": "Address to write to"
+        },
+        "value": {
+          "name": "Value",
+          "description": "Value to write"
+        },
+        "host": {
+          "name": "Inverter",
+          "description": "Inverter IP (only required if you have multiple inverters)"
+        }
+      }
+    },
+    "solis_read_register": {
+      "name": "Read register",
+      "description": "Writes a value to a holding register",
+      "fields": {
+        "address": {
+          "name": "Address",
+          "description": "Address to write to"
+        },
+        "host": {
+          "name": "Inverter",
+          "description": "Inverter IP (only required if you have multiple inverters)"
+        }
+      }
+    },
+    "solis_write_time": {
+      "name": "Change the time of a entity",
+      "description": "Sets the time of the entity to the provided one",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the time entity you want to change"
+        },
+        "time": {
+          "name": "Desired Time",
+          "description": "Time in HH:MM or HH:MM:SS"
+        }
+      }
+    }
+  }
+}
