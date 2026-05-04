@@ -3,24 +3,19 @@ write_holding_register:
   fields:
     address:
       description: Register address to write to
-      default: ''
       example: 43142
     value:
       description: Value to write to the register
-      default: ''
       example: 500
     host:
       description: IP address of the inverter (only required when running multiple inverters)
-      default: ''
       example: 192.168.1.75
 set_time:
   description: Sets the time of a time entity
   fields:
     entity_id:
       description: Entity ID of the time entity you want to update
-      default: ''
       example: 'time.solis_time_charging_charge_start_slot_1'
     time:
       description: Time string in HH:MM or HH:MM:SS format
-      default: ''
       example: '14:50'

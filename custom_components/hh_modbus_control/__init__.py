@@ -207,7 +207,7 @@ async def _setup_solis_entry(
     inverter_config = inverter_template.clone_with_options(user_options, config.get("connection", "S2_WL_ST"))
 
     _LOGGER.info(
-        f"Loaded HH Modbus Control - Solis ({connection_type}) with Model: {config.get('model')}"
+        "Loaded HH Modbus Control - Solis (%s) with Model: %s", connection_type, config.get("model")
     )
 
     if inverter_config.type in [InverterType.STRING, InverterType.GRID]:
@@ -307,7 +307,7 @@ async def _setup_sunsynk_entry(
         raise ConfigEntryError
 
     _LOGGER.info(
-        f"Loaded HH Modbus Control - Sun-Synk ({connection_type}) with Model: {inverter_model}"
+        "Loaded HH Modbus Control - Sun-Synk (%s) with Model: %s", connection_type, inverter_model
     )
 
     from .sensor_data.sunsynk_single_phase import sunsynk_single_phase_sensors as sensors

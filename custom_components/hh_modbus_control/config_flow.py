@@ -45,6 +45,9 @@ CONNECTION_TYPES = {CONN_TYPE_TCP: "TCP (WiFi Dongle)", CONN_TYPE_SERIAL: "Seria
 PARITY_OPTIONS = {"N": "None", "E": "Even", "O": "Odd"}
 
 
+_MAX_CONNECTION_ATTEMPTS = 5
+
+
 def clean_identification(iden: str | None) -> str | None:
     if not iden or not iden.strip():
         return None
@@ -280,7 +283,7 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         modbus_controller = ModbusController(**controller_params)
 
-        for attempt in range(5):
+        for attempt in range(_MAX_CONNECTION_ATTEMPTS):
             try:
                 if not await modbus_controller.connect():
                     raise ConnectionError("Failed to connect")
@@ -299,7 +302,7 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return True, None
             except Exception as e:
                 _LOGGER.warning("Connection attempt %d/5 failed: %s", attempt + 1, e)
-                if attempt < 4:
+                if attempt < _MAX_CONNECTION_ATTEMPTS - 1:
                     await asyncio.sleep(1)
             finally:
                 modbus_controller.close_connection()
