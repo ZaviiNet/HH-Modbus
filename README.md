@@ -1,73 +1,164 @@
-# Solis Modbus Integration for Home Assistant
+# HH Modbus Control — Home Assistant Integration
 
-## Description
+> **Multi-brand Modbus inverter integration for Home Assistant.**  
+> Supports **Solis** and **Sun-Synk / Deye** inverters over TCP or RS485 Serial, with more brands on the roadmap.
 
-The Solis Modbus Integration for Home Assistant is a streamlined solution to connect your Solis inverter with Home Assistant. This integration was inspired by [fboundy's ha_solis_modbus](https://github.com/fboundy/ha_solis_modbus/tree/main). However, it enhances the native Modbus integration in Home Assistant by consolidating multiple register queries into single calls, eliminating unnecessary overhead.
-## Documentation
-https://solis-modbus.readthedocs.io/
+---
 
-## Solis cloud
-You will lose access, unless you use a waveshare device. You will still have the option to disable the modbus, when updates are required.
-https://github.com/Pho3niX90/solis_modbus/discussions/154
+## Table of Contents
+
+- [About](#about)
+- [Supported Inverters](#supported-inverters)
+- [Installation](#installation)
+- [Setup & Configuration](#setup--configuration)
+- [Platforms & Entities](#platforms--entities)
+- [Dashboard Card Examples](#dashboard-card-examples)
+- [Tested Hardware](#tested-hardware)
+- [Troubleshooting](#troubleshooting)
+- [To-Do](#to-do)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+
+---
+
+## About
+
+**HH Modbus Control** is a Home Assistant custom integration that gives you local, cloud-free control over your solar inverter via Modbus (RS485 or TCP). It was born from the [Solis Modbus](https://github.com/Pho3niX90/solis_modbus) integration and has been re-architected to support multiple inverter brands under a single integration domain (`hh_modbus_control`).
+
+Key design goals:
+
+- **Multi-brand** — Solis and Sun-Synk / Deye supported today; more brands coming.
+- **Efficient polling** — groups contiguous registers into bulk reads to minimise bus traffic.
+- **Resilient** — automatic bad-register isolation and recovery, startup staggering for shared connections.
+- **Local-first** — no cloud account required; works entirely on your LAN.
+
+> **Note — Solis cloud access:** connecting via RS485 directly to your inverter does not affect the Solis cloud app. If you use the S2 WiFi dongle for *both* Modbus and cloud you may need to temporarily disable Modbus during Solis firmware updates. See [Solis Modbus discussion #154](https://github.com/Pho3niX90/solis_modbus/discussions/154) for details.
+
+---
+
+## Supported Inverters
+
+### Solis
+
+| Model family | Type | Phases |
+|---|---|---|
+| S6-EH1P | Hybrid | 1 |
+| S6-EH2P | Hybrid | 3 |
+| S6-EH3P | Hybrid | 3 |
+| S6-EO1P | Hybrid | 1 |
+| S6-GR1P | Grid-tie | 1 |
+| S6-EA1P | Energy storage | 1 |
+| S6-EH3P10K-H-ZP *(Zonneplan)* | Hybrid | 3 |
+| S5-EH1P / S5-EO1P | Hybrid | 1 |
+| S5-GR1P / S5-GR3P | Grid-tie | 1 / 3 |
+| S5-GC | Grid-tie (commercial) | 3 |
+| RHI-1P / RHI-3P / RHI-* | Hybrid | 1 / 3 |
+| RAI-* / RAI-3K-48ES-5G | Energy | 1 |
+| 3P(3-20)K-4G | Grid-tie | 3 |
+| 1P(2.5-6)K-4G | Grid-tie | 1 |
+| WAVESHARE *(Waveshare dongle variant)* | Hybrid | 3 |
+
+See the [Solis sensor reference](docs/source/sensors.md) for full register details.
+
+### Sun-Synk / Deye
+
+| Model | Phases |
+|---|---|
+| SUN-5K-SG01LP1 | 1 |
+| SUN-8K-SG01LP1 | 1 |
+| SUN-5K-SG01LP1-AU | 1 |
+| SUN-6K-OG01LP1 | 1 |
+| DEYE-5K-SG01LP1 | 1 |
+| DEYE-8K-SG01LP1 | 1 |
+
+See the [Sun-Synk setup guide](docs/source/sunsynk.md) for register details and configuration notes.
+
+---
 
 ## Installation
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Pho3niX90&repository=solis_modbus&category=integration)
 
-To install the Solis Modbus Integration, follow these steps:
+### HACS (Recommended)
 
-1. Open your Home Assistant instance.
-2. Navigate to the "HACS".
-3. Click the 3 dots menu
-![img.png](https://raw.githubusercontent.com/Pho3niX90/solis_modbus/master/img.png)
-4. Click on "Custom Repositories"
-![img_1.png](https://raw.githubusercontent.com/Pho3niX90/solis_modbus/master/img_1.png)
-5. Fill in the repository "https://github.com/Pho3niX90/solis_modbus", and category "Integration"
-6. Now search for "Solis Modbus"
-![img_2.png](https://raw.githubusercontent.com/Pho3niX90/solis_modbus/master/img_2.png)
-7. Click on Download
+[![Open your Home Assistant instance and add this repository to HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ZaviiNet&repository=HH-Modbus&category=integration)
 
-## Total Sensors
-Whilst the solis inverters do provide total sensors for today, yesterday, month and year. I highly suggest to create a utility meter in HA, as a time difference between HA and Solis might have the values reset before midnight, causing issues in charts.
+1. Open **HACS** in your Home Assistant instance.
+2. Click the **⋮** (three-dot) menu → **Custom Repositories**.
+3. Add `https://github.com/ZaviiNet/HH-Modbus` as an **Integration**.
+4. Search for **HH Modbus Control** and click **Download**.
+5. Restart Home Assistant.
 
-## Manual Installation
-1. Copy the "solis_modbus" folder into your "custom_components" folder
+### Manual Installation
 
-## Setup
-1. Navigate to Settings -> Devices & Services
-2. Click on "+ Add Integration"
-3. Search for "Solis Modbus"
-4. Follow the configuration steps:
+1. Download or clone this repository.
+2. Copy the `custom_components/hh_modbus_control` folder into your HA `custom_components/` directory.
+3. Restart Home Assistant.
 
-### Configuration
-**Connection Type**:
-- **TCP (WiFi Dongle)**: Use for Data Logging Sticks (DLS) or WiFi dongles. Requires IP and Port (Default 502).
-- **Serial (RS485)**: Use for direct USB-RS485 connection. Requires Serial Port path.
+---
 
-**Inverter Serial**: (Required)
-- Enter your inverter's serial number. This is now **mandatory** for generating unique entity IDs and ensuring configuration stability.
+## Setup & Configuration
 
-**Poll Interval**:
-- Customize how frequently sensors update. Faster polling provides more real-time data but increases Modbus load.
+1. Go to **Settings → Devices & Services → + Add Integration**.
+2. Search for **HH Modbus Control**.
+3. Follow the three-step wizard:
 
-### Version 4.0+ Migration (Important)
-As of version 4.0+, the integration uses the **Inverter Serial Number** to generate unique IDs for all entities.
-- **New Installs**: Will use Serial Number automatically.
-- **Existing Installs**:
-    - The integration will attempt to migrate your existing entities (which might use Host ID or the deprecated "Identification" string) to the new Serial Number format automatically on startup.
-    - If your configuration is missing the Serial Number, migration will be **deferred**, and a persistent notification will ask you to Reconfigure the integration to add it.
-    - **No history is lost** during this migration.
+### Step 1 — Select Inverter Brand
 
-**Deprecated Settings**:
-- **Identification**: This field has been removed from the setup form. If you previously used it, the integration will still read it internally to migrate your old entities, but it is no longer user-configurable.
+Choose **Solis** or **Sun-Synk / Deye**.
 
-`Connection Type`: S2 is the default option, only select waveshare if you are using a waveshare device, and some sensors are higher than normal, see here https://solis-modbus.readthedocs.io/en/latest/sensors.html#waveshare
+### Step 2 — Select Connection Method
 
-# [JK BMS](https://github.com/Pho3niX90/jk-bms-card)
-Get the card here : https://github.com/Pho3niX90/jk-bms-card
-![img_jk_bms.png](images/img_jk_bms.png)
+| Option | When to use |
+|---|---|
+| **TCP (WiFi Dongle)** | S2_WL_ST, Waveshare, or any Modbus-TCP adapter |
+| **Serial (RS485)** | Direct USB↔RS485 cable to the inverter's RS485 port |
 
-# [Solar card setup](https://github.com/slipx06/sunsynk-power-flow-card):
-![img_solar_card.png](images/img_solar_card.png)
+### Step 3 — Inverter Configuration
+
+| Field | Required | Notes |
+|---|---|---|
+| Inverter Serial | ✅ Yes | Printed on the inverter label; used to generate stable entity IDs |
+| Modbus Slave ID | ✅ Yes | Default `1`; check your inverter docs if unsure |
+| Inverter Model | ✅ Yes | Select from the dropdown |
+| IP Address / Port | TCP only | Default port `502` |
+| Serial Port | Serial only | e.g. `/dev/ttyUSB0` |
+| Baud Rate | Serial only | Default `9600` |
+| Fast / Normal / Slow Poll Interval | No | Controls update frequency (seconds) |
+| Has PV / Battery / Generator … | Solis only | Enable only the hardware you have |
+| WiFi Dongle Type | Solis TCP only | `S2_WL_ST` (default) or `WAVESHARE` |
+
+> **Tip — Total / Daily Energy Sensors:** inverter-reported daily totals can reset slightly before midnight if the inverter clock drifts. Consider adding a [Home Assistant Utility Meter](https://www.home-assistant.io/integrations/utility_meter/) for accurate daily accounting.
+
+> **Waveshare note:** If you use a Waveshare dongle select **WAVESHARE** as the WiFi Dongle Type; some sensors report values at a different scale. See the [sensor reference](docs/source/sensors.md#waveshare).
+
+---
+
+## Platforms & Entities
+
+| Platform | Solis | Sun-Synk |
+|---|---|---|
+| `sensor` | ✅ All read-only registers | ✅ All input registers |
+| `number` | ✅ Editable holding registers (currents, SOC limits …) | ✅ Editable holding registers |
+| `switch` | ✅ Bit-level switches (TOU, modes …) | ❌ *(planned)* |
+| `time` | ✅ Charge / Discharge time slots | ❌ *(planned)* |
+| `select` | ✅ Work Mode, Force Charge/Discharge … | ❌ *(planned)* |
+
+Services available from **Developer Tools → Services**:
+
+| Service | Description |
+|---|---|
+| `hh_modbus_control.write_holding_register` | Write a raw value to any holding register |
+| `hh_modbus_control.set_time` | Update a time-slot entity by entity ID |
+
+---
+
+## Dashboard Card Examples
+
+### Solar Power Flow Card
+
+Requires the [sunsynk-power-flow-card](https://github.com/slipx06/sunsynk-power-flow-card) HACS frontend card.
+
+![Solar flow card](images/img_solar_card.png)
+
 ```yaml
 type: custom:sunsynk-power-flow-card
 view_layout:
@@ -145,8 +236,16 @@ entities:
   remaining_solar: sensor.solcast_pv_forecast_forecast_remaining_today
 ```
 
-## Settings Card Example
-![img_4.png](images/img_4.png)
+*Card layout inspired by [Sunsynk Home Assistant Dash](https://github.com/slipx06/Sunsynk-Home-Assistant-Dash).*
+
+---
+
+### Charge / Discharge Settings Card
+
+Requires the [multiple-entity-row](https://github.com/benct/lovelace-multiple-entity-row) frontend card.
+
+![Settings card](images/img_4.png)
+
 ```yaml
 type: vertical-stack
 cards:
@@ -242,56 +341,132 @@ cards:
 view_layout:
   grid-area: a
 ```
-Card inspiration from https://github.com/slipx06/Sunsynk-Home-Assistant-Dash
 
-## Tested
-**Inverters Tested**
-Solis and equivalent Axitec, Zonneplan inverters
+---
 
-- **S6-EH3P**
-- - S6-EH3P20K-H (https://github.com/Pho3niX90/solis_modbus/issues/93)
-- - S6-EH3P15K-H
-- - S6-EH3P(12-20)K-H
-- - S6-EH1P6K-L-PRO
-- - S6-EH1P6K-L-PLUS
-- - S6-EH3P10K-H-ZP (https://github.com/Pho3niX90/solis_modbus/issues/191)
-- - S6-EH3P10K-H-EU (https://github.com/Pho3niX90/solis_modbus/issues/202)
-- **S6-GR1P**
-- - S6-GR1P4K (https://github.com/Pho3niX90/solis_modbus/issues/84)
-- **S5-EH1**
-- - S5-EH1(3-6)K-L (https://github.com/Pho3niX90/solis_modbus/issues/89)
-- - S5-EH1P5K-L (https://github.com/Pho3niX90/solis_modbus/issues/94)
-- - S5-EH1P6K-L (https://github.com/Pho3niX90/solis_modbus/issues/94#issuecomment-2656512651)
-- **S5-GC**
-- - S5-GC30K (https://github.com/Pho3niX90/solis_modbus/issues/173)
-- - S5-GC60K (https://github.com/Pho3niX90/solis_modbus/issues/180#issuecomment-2887414843)
-- **RAI-***
-- - RAI-3K-48ES-5G (https://github.com/Pho3niX90/solis_modbus/issues/174)
-- **RHI-***
-- - RHI-3K-48ES-5G (https://github.com/Pho3niX90/solis_modbus/issues/97#issuecomment-2639807764)
-- **3P(3-20)K-4G**
-- - 3P6K-4G (https://github.com/Pho3niX90/solis_modbus/issues/210)
-- **1P(2.5-6)K-4G**
-- - https://github.com/Pho3niX90/solis_modbus/issues/230
+### JK BMS Card
 
-**Wifi Dongles Tested**
-- S2_WL_ST
-- Waveshare
+[![JK BMS card](images/img_jk_bms.png)](https://github.com/Pho3niX90/jk-bms-card)
+
+Get the card: <https://github.com/Pho3niX90/jk-bms-card>
+
+---
+
+## Tested Hardware
+
+### Solis Inverters
+
+Tested with Solis and equivalent Axitec / Zonneplan inverters.
+
+| Model | Notes |
+|---|---|
+| S6-EH3P20K-H | [#93](https://github.com/Pho3niX90/solis_modbus/issues/93) |
+| S6-EH3P15K-H | — |
+| S6-EH3P(12-20)K-H | — |
+| S6-EH1P6K-L-PRO | — |
+| S6-EH1P6K-L-PLUS | — |
+| S6-EH3P10K-H-ZP | [#191](https://github.com/Pho3niX90/solis_modbus/issues/191) |
+| S6-EH3P10K-H-EU | [#202](https://github.com/Pho3niX90/solis_modbus/issues/202) |
+| S6-GR1P4K | [#84](https://github.com/Pho3niX90/solis_modbus/issues/84) |
+| S5-EH1(3-6)K-L | [#89](https://github.com/Pho3niX90/solis_modbus/issues/89) |
+| S5-EH1P5K-L | [#94](https://github.com/Pho3niX90/solis_modbus/issues/94) |
+| S5-EH1P6K-L | [#94 comment](https://github.com/Pho3niX90/solis_modbus/issues/94#issuecomment-2656512651) |
+| S5-GC30K | [#173](https://github.com/Pho3niX90/solis_modbus/issues/173) |
+| S5-GC60K | [#180 comment](https://github.com/Pho3niX90/solis_modbus/issues/180#issuecomment-2887414843) |
+| RAI-3K-48ES-5G | [#174](https://github.com/Pho3niX90/solis_modbus/issues/174) |
+| RHI-3K-48ES-5G | [#97 comment](https://github.com/Pho3niX90/solis_modbus/issues/97#issuecomment-2639807764) |
+| 3P6K-4G | [#210](https://github.com/Pho3niX90/solis_modbus/issues/210) |
+| 1P(2.5-6)K-4G | [#230](https://github.com/Pho3niX90/solis_modbus/issues/230) |
+
+### Sun-Synk / Deye Inverters
+
+Sun-Synk support is new. Community testing reports welcome — please open an issue if your model works or needs adjustments.
+
+### WiFi Dongles / Adapters
+
+- S2_WL_ST (default)
+- Waveshare RS485-to-TCP
+
+---
 
 ## Troubleshooting
-### Restoring Sensor History
-If a sensor's entity ID changes (e.g., during migration) and you lose its history, you can manually restore it using Home Assistant's statistics tool:
 
-1. Navigate to **Developer Tools** -> **Statistics**.
-2. Search for the sensor name (e.g., "Today Battery Charge Energy").
-3. You will likely see two entries:
-    - The **current** sensor (new ID, working).
-    - The **historic** sensor (old ID, typically "Status: Recalculate", missing state, or similar issue). Note down it's ID
-4. Click on the **current** sensor, click the gear icon, and now rename the "Entity ID" to the old one
+### Connection fails during setup
 
-Alternatively, this integration makes it much easier https://github.com/mayerwin/HA-Merge-Sensor-History
+- Confirm the inverter IP / serial port is reachable from the Home Assistant host.
+- Check that no other application (e.g. the Solis cloud dongle) is holding the RS485 bus exclusively.
+- For TCP: verify port `502` is open (or use the port shown in your dongle's settings).
+- Increase the **Modbus Slave ID** timeout if you have a slow connection.
 
-#### ⚠️ Note on Reconfiguration
-If the reconfiguration flow does not ask for your **Serial Number**, please delete the device and re-add it as a new device.
-* **Tip:** Rename the new device to match your old device's name and select **"Recreate Entity IDs"** during setup. This will ensure your history and dashboards remain functional. as mentioned here [Comment by 0rangutan](https://github.com/Pho3niX90/solis_modbus/pull/309#issuecomment-3638890631)
+### Sensors show "Unavailable"
+
+- Check HA logs (`Settings → System → Logs`) for `hh_modbus_control` errors.
+- The integration automatically isolates bad registers and continues polling the rest. If a specific sensor is consistently unavailable, open an issue with your inverter model and the relevant log lines.
+
+### Restoring Sensor History after Entity ID Change
+
+If an entity ID changed (e.g. after reconfiguring the Inverter Serial) and you want to recover historical data:
+
+1. Navigate to **Developer Tools → Statistics**.
+2. Search for the sensor name (e.g., "Battery SOC").
+3. Identify the **current** (working) and **historic** (old) entries.
+4. Click the current sensor → gear icon → rename its **Entity ID** to the old one.
+
+Alternatively, the [HA Merge Sensor History](https://github.com/mayerwin/HA-Merge-Sensor-History) integration automates this.
+
+#### ⚠️ Reconfiguration note
+
+If the reconfiguration flow does not prompt for an **Inverter Serial**, delete the device and re-add it fresh.
+
+> **Tip:** Rename the new device to match your old device name, then choose **"Recreate Entity IDs"** to preserve dashboard and history linkage.
+
+---
+
+## To-Do
+
+- [ ] Sun-Synk `switch`, `time`, and `select` platform entities (charge/discharge scheduling)
+- [ ] HACS-compatible `hacs.json` metadata update for `hh_modbus_control`
+- [ ] Automated integration tests for Sun-Synk sensor data parsing
+- [ ] Docs site rebuild at a new URL (moving away from solis-modbus.readthedocs.io)
+- [ ] Validate Sun-Synk 3-phase models
+- [ ] Service call UI descriptions for Sun-Synk time slots
+
+---
+
+## Roadmap
+
+The HH Modbus Control integration is being designed as a single, extensible platform for **any Modbus-speaking solar inverter**. Planned brand support (subject to community contribution and hardware availability):
+
+| Brand | Status |
+|---|---|
+| **Solis** | ✅ Fully supported |
+| **Sun-Synk / Deye** | 🔄 Sensor + Number entities (schedule control coming) |
+| **Growatt** | 🗓️ Planned |
+| **Goodwe** | 🗓️ Planned |
+| **Huawei SUN2000** | 🗓️ Planned |
+| *Other brands* | 🤝 Community contributions welcome |
+
+If you would like to add support for your inverter, see [CONTRIBUTING.md](CONTRIBUTING.md) and open an issue describing your hardware and available Modbus register map.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a pull request.
+
+Quick-start for local development:
+
+```bash
+# Install uv (https://docs.astral.sh/uv/)
+uv sync
+
+# Lint
+uv run ruff check
+
+# Format
+uv run ruff format
+
+# Test
+uv run pytest
+```
 
