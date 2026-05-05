@@ -1,0 +1,143 @@
+{
+  "title": "HH Modbus Control",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Inverter Brand",
+        "description": "Choose the brand of your inverter.",
+        "data": {
+          "inverter_brand": "Inverter Brand"
+        }
+      },
+      "connection": {
+        "title": "Select Connection Method",
+        "description": "Choose how the inverter is connected to Home Assistant.",
+        "data": {
+          "connection_type": "Connection Type"
+        }
+      },
+      "config": {
+        "title": "Inverter Configuration",
+        "description": "Enter the Modbus connection and inverter settings.",
+        "data": {
+          "host": "IP Address",
+          "port": "Port",
+          "slave": "Modbus Slave ID",
+          "serial_port": "Serial Port",
+          "baudrate": "Baud Rate",
+          "bytesize": "Byte Size",
+          "parity": "Parity",
+          "stopbits": "Stop Bits",
+          "model": "Inverter Model",
+          "connection": "WiFi Dongle Type",
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "identification": "Identification Name",
+          "inverter_serial": "Inverter Serial Number",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100V+)",
+          "has_generator": "Has Generator"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Inverter",
+        "description": "Update the configuration for your inverter.",
+        "data": {
+          "host": "IP Address",
+          "port": "Port",
+          "slave": "Modbus Slave ID",
+          "serial_port": "Serial Port",
+          "baudrate": "Baud Rate",
+          "bytesize": "Byte Size",
+          "parity": "Parity",
+          "stopbits": "Stop Bits",
+          "model": "Inverter Model",
+          "connection": "WiFi Dongle Type",
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "identification": "Identification Name",
+          "inverter_serial": "Inverter Serial Number",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100V+)",
+          "has_generator": "Has Generator"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Please check your connection settings and inverter is powered on.",
+      "invalid_model": "Invalid or unknown inverter model selected.",
+      "invalid_brand": "Please select a valid inverter brand.",
+      "invalid_connection": "Please select a valid connection type.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This inverter is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modify HH Modbus Control Settings",
+        "description": "Update inverter settings. (A restart may be required.)",
+        "data": {
+          "poll_interval_fast": "Fast Poll Interval (seconds)",
+          "poll_interval_normal": "Normal Poll Interval (seconds)",
+          "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "model": "Inverter Model",
+          "connection": "WiFi Dongle Type",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100V+)",
+          "has_generator": "Has Generator"
+        }
+      }
+    }
+  },
+  "services": {
+    "write_holding_register": {
+      "name": "Write holding register",
+      "description": "Writes a value to a Modbus holding register.",
+      "fields": {
+        "address": {
+          "name": "Address",
+          "description": "Register address to write to."
+        },
+        "value": {
+          "name": "Value",
+          "description": "Value to write to the register."
+        },
+        "host": {
+          "name": "Inverter Host",
+          "description": "IP address of the inverter (only required when running multiple inverters)."
+        }
+      }
+    },
+    "set_time": {
+      "name": "Set time entity",
+      "description": "Sets the time of a time entity.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity ID",
+          "description": "Entity ID of the time entity you want to update."
+        },
+        "time": {
+          "name": "Time",
+          "description": "Time in HH:MM or HH:MM:SS format."
+        }
+      }
+    }
+  }
+}

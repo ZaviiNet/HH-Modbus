@@ -16,3 +16,4 @@ Table of Contents
    :caption: Advanced
 
    migration.md
+   sunsynk.md
