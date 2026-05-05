@@ -17,7 +17,6 @@ Supported brands:
     solis, sunsynk, deye, givenergy, sigenergy, solaredge, skyline, duracell
 """
 
-from __future__ import annotations
 
 import argparse
 import asyncio
