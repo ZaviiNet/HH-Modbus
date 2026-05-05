@@ -6,7 +6,8 @@ Register map sourced from:
   TypQxQ/Sigenergy-Local-Modbus:custom_components/sigen/modbusregisterdefinitions.py
 
 All registers are read via local Modbus TCP.
-Plant-level registers start at address 30000 (read-only INPUT registers).
+Plant-level registers start at address 30000. Despite containing read-only operational data,
+Sigenergy places these in the holding register (function code 3) address space.
 Gain conventions (from upstream):
   gain 1000 → multiplier 0.001  (values stored in mW/mvar → kW/kvar)
   gain 100  → multiplier 0.01   (values stored in ×100 → real unit)
@@ -27,9 +28,9 @@ from homeassistant.const import (
 from custom_components.hh_modbus_control.data.enums import Category, DataType, PollSpeed
 
 # ---------------------------------------------------------------------------
-# PLANT-LEVEL INPUT REGISTER GROUPS (30000+)
-# These are read-only registers. All register_type = "input" is the default
-# for addresses < 40000 in the SolisSensorGroup, but we specify it explicitly.
+# PLANT-LEVEL HOLDING REGISTER GROUPS (30000+)
+# These are operational read-only data exposed in Sigenergy's holding register space.
+# All groups use register_type = "holding" (Modbus function code 3).
 # ---------------------------------------------------------------------------
 
 sigenergy_plant_sensors = [
