@@ -1,4 +1,4 @@
-"""Config flow for HH Modbus Control — supports Solis and Sun-Synk/Deye inverters."""
+"""Config flow for HH Modbus Control — supports multiple inverter brands via Modbus."""
 
 import asyncio
 import logging
@@ -9,8 +9,13 @@ from homeassistant import config_entries
 from homeassistant.config_entries import OptionsFlowWithConfigEntry
 
 from .const import (
+    BRAND_DURACELL,
+    BRAND_GIVENERGY,
     BRAND_LABELS,
+    BRAND_SIGENERGY,
     BRAND_SOLIS,
+    BRAND_SOLAREDGE,
+    BRAND_SKYLINE,
     BRAND_SUNSYNK,
     CONF_BAUDRATE,
     CONF_BYTESIZE,
@@ -28,6 +33,10 @@ from .const import (
     DOMAIN,
     INVERTER_BRAND,
 )
+from .data.givenergy_config import GIVENERGY_INVERTERS
+from .data.sigenergy_config import SIGENERGY_INVERTERS
+from .data.solaredge_config import SOLAREDGE_DEFAULT_PORT, SOLAREDGE_INVERTERS
+from .data.skyline_config import SKYLINE_INVERTERS
 from .data.solis_config import CONNECTION_METHOD, SOLIS_INVERTERS, InverterConfig, inverter_options_from_config
 from .data.sunsynk_config import SUNSYNK_INVERTERS, SunsynkInverterConfig
 from .modbus_controller import ModbusController
@@ -37,6 +46,11 @@ _LOGGER = logging.getLogger(__name__)
 # Model dictionaries
 SOLIS_MODELS = {inv.model: inv.model for inv in SOLIS_INVERTERS}
 SUNSYNK_MODELS = {inv.model: inv.model for inv in SUNSYNK_INVERTERS}
+GIVENERGY_MODELS = {inv.model: inv.model for inv in GIVENERGY_INVERTERS}
+SIGENERGY_MODELS = {inv.model: inv.model for inv in SIGENERGY_INVERTERS}
+SOLAREDGE_MODELS = {inv.model: inv.model for inv in SOLAREDGE_INVERTERS}
+SKYLINE_MODELS = {inv.model: inv.model for inv in SKYLINE_INVERTERS if inv.has_dcdc_version}
+DURACELL_MODELS = {inv.model: inv.model for inv in SKYLINE_INVERTERS if not inv.has_dcdc_version}
 
 # Connection type options
 CONNECTION_TYPES = {CONN_TYPE_TCP: "TCP (WiFi Dongle)", CONN_TYPE_SERIAL: "Serial (RS485)"}
@@ -108,6 +122,29 @@ def _sunsynk_config_schema(connection_type: str) -> dict:
     return base
 
 
+def _simple_brand_config_schema(connection_type: str, models: dict, default_port: int = 502) -> dict:
+    """Generic config schema for brands that only need model + connection settings."""
+    base = {
+        vol.Required(CONF_INVERTER_SERIAL): str,
+        vol.Required("slave", default=1): int,
+        vol.Optional("identification", default=""): str,
+        vol.Optional("poll_interval_fast", default=10): vol.All(int, vol.Range(min=5)),
+        vol.Optional("poll_interval_normal", default=15): vol.All(int, vol.Range(min=10)),
+        vol.Optional("poll_interval_slow", default=30): vol.All(int, vol.Range(min=15)),
+        vol.Required("model", default=list(models.keys())[0]): vol.In(models),
+    }
+    if connection_type == CONN_TYPE_TCP:
+        base[vol.Required("host", default="")] = str
+        base[vol.Required("port", default=default_port)] = int
+    else:
+        base[vol.Required(CONF_SERIAL_PORT, default="/dev/ttyUSB0")] = str
+        base[vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE)] = vol.In([9600, 19200, 38400, 57600, 115200])
+        base[vol.Required(CONF_BYTESIZE, default=DEFAULT_BYTESIZE)] = vol.In([7, 8])
+        base[vol.Required(CONF_PARITY, default=DEFAULT_PARITY)] = vol.In(PARITY_OPTIONS)
+        base[vol.Required(CONF_STOPBITS, default=DEFAULT_STOPBITS)] = vol.In([1, 2])
+    return base
+
+
 class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """HH Modbus Control configuration flow."""
 
@@ -125,7 +162,7 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             brand = user_input.get(INVERTER_BRAND)
-            if brand in (BRAND_SOLIS, BRAND_SUNSYNK):
+            if brand in BRAND_LABELS:
                 self._brand = brand
                 return await self.async_step_connection()
             errors["base"] = "invalid_brand"
@@ -191,6 +228,16 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if self._brand == BRAND_SUNSYNK:
             schema_dict = _sunsynk_config_schema(self._connection_type)
+        elif self._brand == BRAND_GIVENERGY:
+            schema_dict = _simple_brand_config_schema(self._connection_type, GIVENERGY_MODELS, default_port=8899)
+        elif self._brand == BRAND_SIGENERGY:
+            schema_dict = _simple_brand_config_schema(self._connection_type, SIGENERGY_MODELS)
+        elif self._brand == BRAND_SOLAREDGE:
+            schema_dict = _simple_brand_config_schema(self._connection_type, SOLAREDGE_MODELS, default_port=SOLAREDGE_DEFAULT_PORT)
+        elif self._brand == BRAND_SKYLINE:
+            schema_dict = _simple_brand_config_schema(self._connection_type, SKYLINE_MODELS)
+        elif self._brand == BRAND_DURACELL:
+            schema_dict = _simple_brand_config_schema(self._connection_type, DURACELL_MODELS)
         else:
             schema_dict = _solis_config_schema(self._connection_type)
 
@@ -222,6 +269,16 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if brand == BRAND_SUNSYNK:
             schema_dict = _sunsynk_config_schema(conn_type)
+        elif brand == BRAND_GIVENERGY:
+            schema_dict = _simple_brand_config_schema(conn_type, GIVENERGY_MODELS, default_port=8899)
+        elif brand == BRAND_SIGENERGY:
+            schema_dict = _simple_brand_config_schema(conn_type, SIGENERGY_MODELS)
+        elif brand == BRAND_SOLAREDGE:
+            schema_dict = _simple_brand_config_schema(conn_type, SOLAREDGE_MODELS, default_port=SOLAREDGE_DEFAULT_PORT)
+        elif brand == BRAND_SKYLINE:
+            schema_dict = _simple_brand_config_schema(conn_type, SKYLINE_MODELS)
+        elif brand == BRAND_DURACELL:
+            schema_dict = _simple_brand_config_schema(conn_type, DURACELL_MODELS)
         else:
             schema_dict = _solis_config_schema(conn_type)
 
@@ -241,15 +298,32 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         brand = user_input.get(INVERTER_BRAND, BRAND_SOLIS)
         conn_type = user_input.get(CONF_CONNECTION_TYPE, CONN_TYPE_TCP)
 
+        inverter_model = user_input.get("model")
+
         if brand == BRAND_SUNSYNK:
-            inverter_model = user_input.get("model")
             inverter_config: SunsynkInverterConfig | None = next(
                 (inv for inv in SUNSYNK_INVERTERS if inv.model == inverter_model), None
             )
             if inverter_config is None:
                 return False, "invalid_model"
+        elif brand == BRAND_GIVENERGY:
+            inverter_config = next((inv for inv in GIVENERGY_INVERTERS if inv.model == inverter_model), None)
+            if inverter_config is None:
+                return False, "invalid_model"
+        elif brand == BRAND_SIGENERGY:
+            inverter_config = next((inv for inv in SIGENERGY_INVERTERS if inv.model == inverter_model), None)
+            if inverter_config is None:
+                return False, "invalid_model"
+        elif brand == BRAND_SOLAREDGE:
+            inverter_config = next((inv for inv in SOLAREDGE_INVERTERS if inv.model == inverter_model), None)
+            if inverter_config is None:
+                return False, "invalid_model"
+        elif brand in (BRAND_SKYLINE, BRAND_DURACELL):
+            from .data.skyline_config import SKYLINE_INVERTERS as _SKYLINE_INVERTERS
+            inverter_config = next((inv for inv in _SKYLINE_INVERTERS if inv.model == inverter_model), None)
+            if inverter_config is None:
+                return False, "invalid_model"
         else:
-            inverter_model = user_input.get("model")
             inverter_template: InverterConfig | None = next(
                 (inv for inv in SOLIS_INVERTERS if inv.model == inverter_model), None
             )
@@ -291,6 +365,18 @@ class HHModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if brand == BRAND_SUNSYNK:
                     # Sun-Synk: read input register 0 (device type)
                     await modbus_controller.async_read_input_register(0, 1)
+                elif brand == BRAND_GIVENERGY:
+                    # GivEnergy: read input register 0 (status)
+                    await modbus_controller.async_read_input_register(0, 1)
+                elif brand == BRAND_SIGENERGY:
+                    # Sigenergy: read plant running state register 30051
+                    await modbus_controller.async_read_holding_register(30051, 1)
+                elif brand == BRAND_SOLAREDGE:
+                    # SolarEdge: read SunSpec AC power register 40083
+                    await modbus_controller.async_read_holding_register(40083, 1)
+                elif brand in (BRAND_SKYLINE, BRAND_DURACELL):
+                    # Skyline/Duracell G3: read battery SOC register 0x2000 (8192)
+                    await modbus_controller.async_read_holding_register(8192, 1)
                 else:
                     from .data.enums import InverterType
 
@@ -337,6 +423,51 @@ class HHModbusOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
                     vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
                     vol.Required("model"): vol.In(SUNSYNK_MODELS),
+                }
+            )
+        elif brand == BRAND_GIVENERGY:
+            options_schema = vol.Schema(
+                {
+                    vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=5)),
+                    vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
+                    vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
+                    vol.Required("model"): vol.In(GIVENERGY_MODELS),
+                }
+            )
+        elif brand == BRAND_SIGENERGY:
+            options_schema = vol.Schema(
+                {
+                    vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=5)),
+                    vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
+                    vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
+                    vol.Required("model"): vol.In(SIGENERGY_MODELS),
+                }
+            )
+        elif brand == BRAND_SOLAREDGE:
+            options_schema = vol.Schema(
+                {
+                    vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=5)),
+                    vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
+                    vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
+                    vol.Required("model"): vol.In(SOLAREDGE_MODELS),
+                }
+            )
+        elif brand == BRAND_SKYLINE:
+            options_schema = vol.Schema(
+                {
+                    vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=5)),
+                    vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
+                    vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
+                    vol.Required("model"): vol.In(SKYLINE_MODELS),
+                }
+            )
+        elif brand == BRAND_DURACELL:
+            options_schema = vol.Schema(
+                {
+                    vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=5)),
+                    vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=10)),
+                    vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=15)),
+                    vol.Required("model"): vol.In(DURACELL_MODELS),
                 }
             )
         else:

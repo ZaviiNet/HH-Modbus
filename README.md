@@ -1,7 +1,7 @@
 # HH Modbus Control — Home Assistant Integration
 
 > **Multi-brand Modbus inverter integration for Home Assistant.**  
-> Supports **Solis** and **Sun-Synk / Deye** inverters over TCP or RS485 Serial, with more brands on the roadmap.
+> Supports **Solis**, **Sun-Synk / Deye**, **GivEnergy**, **Sigenergy**, **SolarEdge**, **Skyline**, and **Duracell G3** inverters over TCP or RS485 Serial.
 
 ---
 
@@ -27,7 +27,7 @@
 
 Key design goals:
 
-- **Multi-brand** — Solis and Sun-Synk / Deye supported today; more brands coming.
+- **Multi-brand** — Solis, Sun-Synk / Deye, GivEnergy, Sigenergy, SolarEdge, Skyline, and Duracell G3 supported.
 - **Efficient polling** — groups contiguous registers into bulk reads to minimise bus traffic.
 - **Resilient** — automatic bad-register isolation and recovery, startup staggering for shared connections.
 - **Local-first** — no cloud account required; works entirely on your LAN.
@@ -73,6 +73,82 @@ See the [Solis sensor reference](docs/source/sensors.md) for full register detai
 
 See the [Sun-Synk setup guide](docs/source/sunsynk.md) for register details and configuration notes.
 
+### GivEnergy
+
+*Credit: [cdpuk/givenergy-local](https://github.com/cdpuk/givenergy-local)*
+
+| Model | Phases | Default Port |
+|---|---|---|
+| GivEnergy-Hybrid-1P | 1 | 8899 |
+| GivEnergy-Hybrid-3P | 3 | 8899 |
+| GivEnergy-AC-Coupled | 1 | 8899 |
+
+> **Note — Port 8899:** GivEnergy inverters use TCP port **8899** instead of the standard 502. Gen 3 inverters support standard Modbus TCP framing. Gen 1/2 may use a proprietary framing layer that requires the upstream `givenergy-local` integration.
+
+See the [GivEnergy setup guide](docs/source/givenergy.md) for full details.
+
+### Sigenergy
+
+*Credit: [TypQxQ/Sigenergy-Local-Modbus](https://github.com/TypQxQ/Sigenergy-Local-Modbus)*
+
+| Model | Phases |
+|---|---|
+| Sigenergy-5K | 1 |
+| Sigenergy-8K | 1 |
+| Sigenergy-10K | 3 |
+| Sigenergy-15K | 3 |
+| Sigenergy-20K | 3 |
+
+See the [Sigenergy setup guide](docs/source/sigenergy.md) for register details.
+
+### SolarEdge
+
+*Credit: [binsentsu/home-assistant-solaredge-modbus](https://github.com/binsentsu/home-assistant-solaredge-modbus)*
+
+| Model | Phases | Default Port |
+|---|---|---|
+| SolarEdge-Single-Phase | 1 | 1502 |
+| SolarEdge-Three-Phase | 3 | 1502 |
+| SolarEdge-StorEdge | 1 | 1502 |
+| SolarEdge-StorEdge-3P | 3 | 1502 |
+
+> **Note — Port 1502:** SolarEdge inverters use Modbus TCP on port **1502** (not 502). Registers follow the SunSpec standard.
+
+See the [SolarEdge setup guide](docs/source/solaredge.md) for register details.
+
+### Skyline
+
+*Credit: [iPeel/HA-Skyline](https://github.com/iPeel/HA-Skyline)*
+
+| Model | Phases |
+|---|---|
+| Skyline-3K | 1 |
+| Skyline-5K | 1 |
+| Skyline-6K | 3 |
+| Skyline-10K | 3 |
+
+See the [Skyline setup guide](docs/source/skyline.md) for register details.
+
+### Duracell G3
+
+*Credit: [iPeel/HA-Skyline](https://github.com/iPeel/HA-Skyline) — with modifications for the Duracell G3 rebranded inverter*
+
+The Duracell G3 is a rebranded Skyline inverter. It shares the same Modbus register map, with the exception that the DCDC software version register is unpopulated on Duracell G3 units.
+
+| Model | Phases |
+|---|---|
+| Duracell-G3-3K | 1 |
+| Duracell-G3-5K | 1 |
+| Duracell-G3-6K | 3 |
+| Duracell-G3-10K | 3 |
+
+See the [Skyline setup guide](docs/source/skyline.md) for wiring and configuration details (also applies to Duracell G3).
+
+### Fox ESS
+
+> **⚠️ Not currently supported as a Modbus integration.**  
+> The [macxq/foxess-ha](https://github.com/macxq/foxess-ha) integration uses the Fox ESS **cloud REST API** (not local Modbus). Local Modbus support for Fox ESS is on the roadmap.
+
 ---
 
 ## Installation
@@ -103,14 +179,14 @@ See the [Sun-Synk setup guide](docs/source/sunsynk.md) for register details and 
 
 ### Step 1 — Select Inverter Brand
 
-Choose **Solis** or **Sun-Synk / Deye**.
+Choose **Solis**, **Sun-Synk / Deye**, **GivEnergy**, **Sigenergy**, **SolarEdge**, **Skyline**, or **Duracell G3**.
 
 ### Step 2 — Select Connection Method
 
 | Option | When to use |
 |---|---|
-| **TCP (WiFi Dongle)** | S2_WL_ST, Waveshare, or any Modbus-TCP adapter |
-| **Serial (RS485)** | Direct USB↔RS485 cable to the inverter's RS485 port |
+| **TCP (WiFi Dongle)** | S2_WL_ST, Waveshare RS485-to-TCP, or any Modbus-TCP adapter |
+| **Serial (RS485)** | USB↔RS485 adapter plugged into the HA host (e.g. [Waveshare USB to RS485](docs/source/waveshare-usb-rs485.md)) connected directly to the inverter's RS485 terminals |
 
 ### Step 3 — Inverter Configuration
 
@@ -119,8 +195,8 @@ Choose **Solis** or **Sun-Synk / Deye**.
 | Inverter Serial | ✅ Yes | Printed on the inverter label; used to generate stable entity IDs |
 | Modbus Slave ID | ✅ Yes | Default `1`; check your inverter docs if unsure |
 | Inverter Model | ✅ Yes | Select from the dropdown |
-| IP Address / Port | TCP only | Default port `502` |
-| Serial Port | Serial only | e.g. `/dev/ttyUSB0` |
+| IP Address / Port | TCP only | Default port `502` (GivEnergy: `8899`, SolarEdge: `1502`) |
+| Serial Port | Serial only | e.g. `/dev/ttyUSB0` — see [Waveshare USB to RS485 guide](docs/source/waveshare-usb-rs485.md) |
 | Baud Rate | Serial only | Default `9600` |
 | Fast / Normal / Slow Poll Interval | No | Controls update frequency (seconds) |
 | Has PV / Battery / Generator … | Solis only | Enable only the hardware you have |
@@ -134,13 +210,13 @@ Choose **Solis** or **Sun-Synk / Deye**.
 
 ## Platforms & Entities
 
-| Platform | Solis | Sun-Synk |
-|---|---|---|
-| `sensor` | ✅ All read-only registers | ✅ All input registers |
-| `number` | ✅ Editable holding registers (currents, SOC limits …) | ✅ Editable holding registers |
-| `switch` | ✅ Bit-level switches (TOU, modes …) | ❌ *(planned)* |
-| `time` | ✅ Charge / Discharge time slots | ❌ *(planned)* |
-| `select` | ✅ Work Mode, Force Charge/Discharge … | ❌ *(planned)* |
+| Platform | Solis | Sun-Synk | GivEnergy | Sigenergy | SolarEdge | Skyline / Duracell G3 |
+|---|---|---|---|---|---|---|
+| `sensor` | ✅ All read-only registers | ✅ All input registers | ✅ Live & energy sensors | ✅ Plant-level sensors | ✅ SunSpec sensors | ✅ Power, battery, grid sensors |
+| `number` | ✅ Editable holding registers | ✅ Editable holding registers | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* |
+| `switch` | ✅ Bit-level switches (TOU, modes …) | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* |
+| `time` | ✅ Charge / Discharge time slots | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* |
+| `select` | ✅ Work Mode, Force Charge/Discharge … | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* | ❌ *(planned)* |
 
 Services available from **Developer Tools → Services**:
 
@@ -382,10 +458,14 @@ Tested with Solis and equivalent Axitec / Zonneplan inverters.
 
 Sun-Synk support is new. Community testing reports welcome — please open an issue if your model works or needs adjustments.
 
-### WiFi Dongles / Adapters
+### WiFi Dongles / TCP Adapters
 
 - S2_WL_ST (default)
 - Waveshare RS485-to-TCP
+
+### USB↔RS485 Serial Adapters
+
+- **Waveshare USB to RS485 Industrial Converter** (FT232RL) — plug-and-play on Linux / Home Assistant OS; appears as `/dev/ttyUSB0`. See the [Waveshare USB to RS485 guide](docs/source/waveshare-usb-rs485.md) for full wiring and setup instructions.
 
 ---
 
