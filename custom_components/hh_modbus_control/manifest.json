@@ -1,7 +1,7 @@
 {
   "domain": "hh_modbus_control",
   "name": "HH Modbus Control",
-  "codeowners": ["@pho3nix90"],
+  "codeowners": ["@ZaviiNet"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "",

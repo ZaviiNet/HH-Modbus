@@ -1,13 +1,13 @@
 {
   "domain": "solis_modbus",
   "name": "Solis Modbus",
-  "codeowners": ["@pho3nix90"],
+  "codeowners": ["@ZaviiNet"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://solis-modbus.readthedocs.io",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/Pho3niX90/solis_modbus/issues",
+  "issue_tracker": "https://github.com/ZaviiNet/HH-Modbus/issues",
   "quality_scale": "silver",
   "requirements": ["pymodbus>=3.11.1"],
   "version": "4.1.3"
