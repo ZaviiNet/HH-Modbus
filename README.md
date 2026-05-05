@@ -185,8 +185,8 @@ Choose **Solis**, **Sun-Synk / Deye**, **GivEnergy**, **Sigenergy**, **SolarEdge
 
 | Option | When to use |
 |---|---|
-| **TCP (WiFi Dongle)** | S2_WL_ST, Waveshare, or any Modbus-TCP adapter |
-| **Serial (RS485)** | Direct USB↔RS485 cable to the inverter's RS485 port |
+| **TCP (WiFi Dongle)** | S2_WL_ST, Waveshare RS485-to-TCP, or any Modbus-TCP adapter |
+| **Serial (RS485)** | USB↔RS485 adapter plugged into the HA host (e.g. [Waveshare USB to RS485](docs/source/waveshare-usb-rs485.md)) connected directly to the inverter's RS485 terminals |
 
 ### Step 3 — Inverter Configuration
 
@@ -196,7 +196,7 @@ Choose **Solis**, **Sun-Synk / Deye**, **GivEnergy**, **Sigenergy**, **SolarEdge
 | Modbus Slave ID | ✅ Yes | Default `1`; check your inverter docs if unsure |
 | Inverter Model | ✅ Yes | Select from the dropdown |
 | IP Address / Port | TCP only | Default port `502` (GivEnergy: `8899`, SolarEdge: `1502`) |
-| Serial Port | Serial only | e.g. `/dev/ttyUSB0` |
+| Serial Port | Serial only | e.g. `/dev/ttyUSB0` — see [Waveshare USB to RS485 guide](docs/source/waveshare-usb-rs485.md) |
 | Baud Rate | Serial only | Default `9600` |
 | Fast / Normal / Slow Poll Interval | No | Controls update frequency (seconds) |
 | Has PV / Battery / Generator … | Solis only | Enable only the hardware you have |
@@ -458,10 +458,14 @@ Tested with Solis and equivalent Axitec / Zonneplan inverters.
 
 Sun-Synk support is new. Community testing reports welcome — please open an issue if your model works or needs adjustments.
 
-### WiFi Dongles / Adapters
+### WiFi Dongles / TCP Adapters
 
 - S2_WL_ST (default)
 - Waveshare RS485-to-TCP
+
+### USB↔RS485 Serial Adapters
+
+- **Waveshare USB to RS485 Industrial Converter** (FT232RL) — plug-and-play on Linux / Home Assistant OS; appears as `/dev/ttyUSB0`. See the [Waveshare USB to RS485 guide](docs/source/waveshare-usb-rs485.md) for full wiring and setup instructions.
 
 ---
 

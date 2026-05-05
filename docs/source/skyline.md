@@ -48,7 +48,10 @@ Skyline and Duracell G3 inverters expose an **RS485 port** for monitoring/meter 
 
 Connect **pins 7 (A) and 9 (B)** to your RS485 adapter or Modbus-TCP gateway.
 
-Most users will connect via a **Modbus-TCP gateway** (e.g. Waveshare RS485-to-TCP) rather than a direct serial connection.
+You can connect via either:
+
+- A **USB↔RS485 adapter** (e.g. [Waveshare USB to RS485](waveshare-usb-rs485.md)) plugged directly into the Home Assistant host — choose **Serial** as the connection type.
+- A **Modbus-TCP gateway** (e.g. Waveshare RS485-to-TCP) on the same LAN — choose **TCP** as the connection type.
 
 ---
 
