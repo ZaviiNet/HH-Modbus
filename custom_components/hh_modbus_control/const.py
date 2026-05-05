@@ -17,10 +17,28 @@ ENTITIES = "entities"
 INVERTER_BRAND = "inverter_brand"
 BRAND_SOLIS = "solis"
 BRAND_SUNSYNK = "sunsynk"
-BRAND_LABELS = {BRAND_SOLIS: "Solis", BRAND_SUNSYNK: "Sun-Synk / Deye"}
+BRAND_GIVENERGY = "givenergy"
+BRAND_SIGENERGY = "sigenergy"
+BRAND_SOLAREDGE = "solaredge"
+BRAND_SKYLINE = "skyline"
+BRAND_DURACELL = "duracell"
+BRAND_LABELS = {
+    BRAND_SOLIS: "Solis",
+    BRAND_SUNSYNK: "Sun-Synk / Deye",
+    BRAND_GIVENERGY: "GivEnergy",
+    BRAND_SIGENERGY: "Sigenergy",
+    BRAND_SOLAREDGE: "SolarEdge",
+    BRAND_SKYLINE: "Skyline",
+    BRAND_DURACELL: "Duracell G3",
+}
 
 MANUFACTURER_SOLIS = "Solis"
 MANUFACTURER_SUNSYNK = "Sun-Synk"
+MANUFACTURER_GIVENERGY = "GivEnergy"
+MANUFACTURER_SIGENERGY = "Sigenergy"
+MANUFACTURER_SOLAREDGE = "SolarEdge"
+MANUFACTURER_SKYLINE = "Skyline"
+MANUFACTURER_DURACELL = "Duracell"
 
 # Connection types
 CONN_TYPE_TCP = "tcp"

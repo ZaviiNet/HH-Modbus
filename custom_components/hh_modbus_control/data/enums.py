@@ -4,6 +4,11 @@ from enum import Enum
 class InverterBrand(Enum):
     SOLIS = "solis"
     SUNSYNK = "sunsynk"
+    GIVENERGY = "givenergy"
+    SIGENERGY = "sigenergy"
+    SOLAREDGE = "solaredge"
+    SKYLINE = "skyline"
+    DURACELL = "duracell"
 
 
 class PollSpeed(Enum):

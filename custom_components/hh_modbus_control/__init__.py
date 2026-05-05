@@ -1,4 +1,4 @@
-"""The HH Modbus Control Integration — supports Solis and Sun-Synk/Deye inverters."""
+"""The HH Modbus Control Integration — supports multiple inverter brands via Modbus."""
 
 import asyncio
 import logging
@@ -12,7 +12,12 @@ from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from .const import (
+    BRAND_DURACELL,
+    BRAND_GIVENERGY,
+    BRAND_SIGENERGY,
     BRAND_SOLIS,
+    BRAND_SOLAREDGE,
+    BRAND_SKYLINE,
     BRAND_SUNSYNK,
     CONF_BAUDRATE,
     CONF_BYTESIZE,
@@ -31,7 +36,12 @@ from .const import (
     DEFAULT_STOPBITS,
     DOMAIN,
     INVERTER_BRAND,
+    MANUFACTURER_DURACELL,
+    MANUFACTURER_GIVENERGY,
+    MANUFACTURER_SIGENERGY,
     MANUFACTURER_SOLIS,
+    MANUFACTURER_SOLAREDGE,
+    MANUFACTURER_SKYLINE,
     MANUFACTURER_SUNSYNK,
     TIME_ENTITIES,
 )
@@ -47,6 +57,8 @@ SOLIS_PLATFORMS = [Platform.NUMBER, Platform.SWITCH, Platform.TIME, Platform.SEL
 # Platforms loaded for Sun-Synk inverters — NUMBER for editable holding-register sensors;
 # TIME/SELECT/SWITCH are Solis-specific so are skipped.
 SUNSYNK_PLATFORMS = [Platform.NUMBER]
+# New brands: sensor-only for initial release
+SENSOR_ONLY_PLATFORMS: list[Platform] = []
 
 SCHEME_HOLDING_REGISTER = vol.Schema(
     {
@@ -175,6 +187,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     if brand == BRAND_SUNSYNK:
         await _setup_sunsynk_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow)
+    elif brand == BRAND_GIVENERGY:
+        await _setup_generic_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow, brand)
+    elif brand == BRAND_SIGENERGY:
+        await _setup_generic_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow, brand)
+    elif brand == BRAND_SOLAREDGE:
+        await _setup_generic_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow, brand)
+    elif brand == BRAND_SKYLINE:
+        await _setup_generic_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow, brand)
+    elif brand == BRAND_DURACELL:
+        await _setup_generic_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow, brand)
     else:
         await _setup_solis_entry(hass, entry, config, connection_type, host, port, slave, inverter_serial, identification, poll_interval_fast, poll_interval_normal, poll_interval_slow)
 
@@ -359,13 +381,114 @@ async def _setup_sunsynk_entry(
     hass.data[DOMAIN]["data_retrieval"][entry.entry_id] = DataRetrieval(hass, controller)
 
 
+async def _setup_generic_entry(
+    hass, entry, config, connection_type, host, port, slave, inverter_serial, identification,
+    poll_interval_fast, poll_interval_normal, poll_interval_slow, brand: str,
+):
+    """Set up a generic (non-Solis/non-SunSynk) brand inverter entry using sensor-only platform."""
+    # Resolve inverter config & sensor list based on brand
+    if brand == BRAND_GIVENERGY:
+        from .data.givenergy_config import GIVENERGY_INVERTERS
+        from .sensor_data.givenergy_sensors import givenergy_sensors as sensors
+        inverter_model = config.get("model", "GivEnergy-Hybrid-1P")
+        inverter_config = next((inv for inv in GIVENERGY_INVERTERS if inv.model == inverter_model), GIVENERGY_INVERTERS[0])
+        manufacturer = MANUFACTURER_GIVENERGY
+        brand_label = "GivEnergy"
+    elif brand == BRAND_SIGENERGY:
+        from .data.sigenergy_config import SIGENERGY_INVERTERS
+        from .sensor_data.sigenergy_sensors import sigenergy_sensors as sensors
+        inverter_model = config.get("model", "Sigenergy-5K")
+        inverter_config = next((inv for inv in SIGENERGY_INVERTERS if inv.model == inverter_model), SIGENERGY_INVERTERS[0])
+        manufacturer = MANUFACTURER_SIGENERGY
+        brand_label = "Sigenergy"
+    elif brand == BRAND_SOLAREDGE:
+        from .data.solaredge_config import SOLAREDGE_INVERTERS
+        from .sensor_data.solaredge_sensors import solaredge_sensors as sensors
+        inverter_model = config.get("model", "SolarEdge-Single-Phase")
+        inverter_config = next((inv for inv in SOLAREDGE_INVERTERS if inv.model == inverter_model), SOLAREDGE_INVERTERS[0])
+        manufacturer = MANUFACTURER_SOLAREDGE
+        brand_label = "SolarEdge"
+    elif brand == BRAND_SKYLINE:
+        from .data.skyline_config import SKYLINE_INVERTERS
+        from .sensor_data.skyline_sensors import skyline_sensors as sensors
+        inverter_model = config.get("model", "Skyline-5K")
+        inverter_config = next((inv for inv in SKYLINE_INVERTERS if inv.model == inverter_model), SKYLINE_INVERTERS[0])
+        manufacturer = MANUFACTURER_SKYLINE
+        brand_label = "Skyline"
+    elif brand == BRAND_DURACELL:
+        from .data.skyline_config import SKYLINE_INVERTERS
+        from .sensor_data.skyline_sensors import duracell_g3_sensors as sensors
+        inverter_model = config.get("model", "Duracell-G3-5K")
+        inverter_config = next((inv for inv in SKYLINE_INVERTERS if inv.model == inverter_model), SKYLINE_INVERTERS[4])
+        manufacturer = MANUFACTURER_DURACELL
+        brand_label = "Duracell G3"
+    else:
+        raise ConfigEntryError(f"Unknown brand: {brand}")
+
+    _LOGGER.info(
+        "Loaded HH Modbus Control - %s (%s) with Model: %s", brand_label, connection_type, inverter_model
+    )
+
+    controller_params = {
+        "hass": hass,
+        "device_id": slave,
+        "identification": identification,
+        "fast_poll": poll_interval_fast,
+        "normal_poll": poll_interval_normal,
+        "slow_poll": poll_interval_slow,
+        "inverter_config": inverter_config,
+        "connection_type": connection_type,
+        "serial_number": inverter_serial,
+        "manufacturer": manufacturer,
+    }
+
+    if connection_type == CONN_TYPE_TCP:
+        controller_params["host"] = host
+        controller_params["port"] = port
+    else:
+        controller_params["serial_port"] = config.get(CONF_SERIAL_PORT, "/dev/ttyUSB0")
+        controller_params["baudrate"] = config.get(CONF_BAUDRATE, DEFAULT_BAUDRATE)
+        controller_params["bytesize"] = config.get(CONF_BYTESIZE, DEFAULT_BYTESIZE)
+        controller_params["parity"] = config.get(CONF_PARITY, DEFAULT_PARITY)
+        controller_params["stopbits"] = config.get(CONF_STOPBITS, DEFAULT_STOPBITS)
+
+    controller = ModbusController(**controller_params)
+
+    controller._sensor_groups = []
+    for group in sensors:
+        controller._sensor_groups.append(
+            SolisSensorGroup(hass=hass, definition=group, controller=controller, identification=identification)
+        )
+
+    controller._derived_sensors = []
+
+    set_controller(hass, controller, entry)
+
+    _LOGGER.debug(
+        "%s config entry setup for %s connection, slave %s", brand_label, connection_type, slave
+    )
+
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    # New brands: sensor-only for initial release; control platforms planned
+    await hass.config_entries.async_forward_entry_setups(entry, SENSOR_ONLY_PLATFORMS)
+
+    hass.data[DOMAIN].setdefault("data_retrieval", {})
+    hass.data[DOMAIN]["data_retrieval"][entry.entry_id] = DataRetrieval(hass, controller)
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a HH Modbus Control config entry."""
     _LOGGER.debug("init async_unload_entry")
 
     config = {**entry.data, **entry.options}
     brand = config.get(INVERTER_BRAND, BRAND_SOLIS)
-    platforms = [Platform.SENSOR] + (SOLIS_PLATFORMS if brand == BRAND_SOLIS else SUNSYNK_PLATFORMS)
+    if brand == BRAND_SOLIS:
+        extra_platforms = SOLIS_PLATFORMS
+    elif brand == BRAND_SUNSYNK:
+        extra_platforms = SUNSYNK_PLATFORMS
+    else:
+        extra_platforms = SENSOR_ONLY_PLATFORMS
+    platforms = [Platform.SENSOR] + extra_platforms
 
     unload_ok = all(
         await asyncio.gather(
