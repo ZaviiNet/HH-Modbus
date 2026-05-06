@@ -453,7 +453,7 @@ def build_sensor_info_and_map(
             multiplier = entity.get("multiplier", 0)
             data_type = entity.get("data_type")
             is_hidden = bool(entity.get("hidden") or entity.get("type") == "reserve")
-            is_string = data_type == DataType.STRING or data_type == "STRING"
+            is_string = _is_data_type(data_type, "STRING")
 
             # Normalise data_type to the string name (e.g. "S16") regardless of
             # whether the sensor file stores it as a DataType enum or a raw string.
@@ -487,6 +487,18 @@ def build_sensor_info_and_map(
     return reg_map, sensor_info
 
 
+def _is_data_type(value: "DataType | str | None", name: str) -> bool:
+    """Return True if *value* represents the DataType identified by *name*.
+
+    Handles both enum instances (``DataType.S16``) and raw strings (``"S16"``).
+    """
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value == name
+    return value.name == name
+
+
 def _compute_display_value(
     raw_values: list[int],
     multiplier: float,
@@ -514,11 +526,11 @@ def _compute_display_value(
 
     if count >= 2 and len(raw_values) >= 2:
         raw = (raw_values[0] << 16) | raw_values[1]
-        if (data_type == DataType.S32 or data_type == "S32") and raw > 0x7FFF_FFFF:
+        if _is_data_type(data_type, "S32") and raw > 0x7FFF_FFFF:
             raw -= 0x1_0000_0000
     else:
         raw = raw_values[0]
-        if (data_type == DataType.S16 or data_type == "S16") and raw > 32767:
+        if _is_data_type(data_type, "S16") and raw > 32767:
             raw -= 65536
         elif multiplier < 0 and raw > 32767:
             raw -= 65536
@@ -1051,6 +1063,11 @@ async def run_simulator(
         site = _aiohttp_web.TCPSite(runner, "0.0.0.0", web_ui_port)
         await site.start()
         print(f"    Web UI : http://0.0.0.0:{web_ui_port}")
+        _LOGGER.warning(
+            "Web UI bound to 0.0.0.0:%d — accessible from all network interfaces. "
+            "Restrict access via firewall rules in untrusted networks.",
+            web_ui_port,
+        )
 
     print("\n    Point the hh_modbus_control integration at this host/port.")
     print("    Press Ctrl+C to stop.\n")
