@@ -184,22 +184,34 @@ from custom_components.hh_modbus_control.sensor_data.sunsynk_single_phase import
 # Pymodbus server imports
 # ---------------------------------------------------------------------------
 try:
-    # pymodbus 3.7+ preferred API
-    from pymodbus.simulator import SimDevice
-    from pymodbus.simulator.simdata import DataType as SimDataType, SimData
-    _USE_SIMDEVICE = True
-except ImportError:
-    _USE_SIMDEVICE = False
+    try:
+        # pymodbus 3.7+ preferred API
+        from pymodbus.simulator import SimDevice
+        from pymodbus.simulator.simdata import DataType as SimDataType, SimData
+        _USE_SIMDEVICE = True
+    except ImportError:
+        _USE_SIMDEVICE = False
 
-if not _USE_SIMDEVICE:
-    # Older pymodbus 3.x fallback (deprecated in 3.13)
-    from pymodbus.datastore import (  # type: ignore[assignment]
-        ModbusDeviceContext,
-        ModbusSequentialDataBlock,
-        ModbusServerContext,
-    )
+    if not _USE_SIMDEVICE:
+        # Older pymodbus 3.x fallback (deprecated in 3.13)
+        from pymodbus.datastore import (  # type: ignore[assignment]
+            ModbusDeviceContext,
+            ModbusSequentialDataBlock,
+            ModbusServerContext,
+        )
 
-from pymodbus.server import StartAsyncTcpServer  # noqa: E402
+    from pymodbus.server import StartAsyncTcpServer  # noqa: E402
+except ModuleNotFoundError as exc:
+    if exc.name == "pymodbus":
+        raise SystemExit(
+            "Missing dependency: 'pymodbus'.\n"
+            "Install project dependencies first:\n"
+            "  uv sync\n"
+            "Then run the simulator via uv:\n"
+            "  uv run python simulator/inverter_simulator.py --brand solis --port 5020\n"
+            "(Use a port >1024 to avoid sudo.)"
+        ) from exc
+    raise
 
 _LOGGER = logging.getLogger(__name__)
 

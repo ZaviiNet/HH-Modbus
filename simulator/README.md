@@ -22,6 +22,12 @@ A standalone Python tool that simulates any inverter brand supported by **hh_mod
 
 The simulator has **no additional dependencies** beyond what the project already requires.
 
+Install dependencies from the repository root before running:
+
+```bash
+uv sync
+```
+
 ## Usage
 
 Run from the repository root:
@@ -29,19 +35,19 @@ Run from the repository root:
 ```bash
 # Simulate a Solis inverter on the default port (502)
 # Note: port 502 requires root/administrator privileges on most systems.
-sudo python simulator/inverter_simulator.py --brand solis
+sudo -E uv run python simulator/inverter_simulator.py --brand solis
 
 # Use a non-privileged port for testing
-python simulator/inverter_simulator.py --brand solis --port 5020
+uv run python simulator/inverter_simulator.py --brand solis --port 5020
 
 # Simulate a GivEnergy inverter on its default port (8899)
-python simulator/inverter_simulator.py --brand givenergy
+uv run python simulator/inverter_simulator.py --brand givenergy
 
 # Simulate a SolarEdge inverter on port 1502
-python simulator/inverter_simulator.py --brand solaredge
+uv run python simulator/inverter_simulator.py --brand solaredge
 
 # Bind to a specific IP, custom slave address, with verbose output
-python simulator/inverter_simulator.py --brand sunsynk --host 192.168.1.50 --port 5020 --slave 2 --verbose
+uv run python simulator/inverter_simulator.py --brand sunsynk --host 192.168.1.50 --port 5020 --slave 2 --verbose
 ```
 
 ### All Options
@@ -83,7 +89,7 @@ The simulator populates registers with realistic default values based on each se
 1. Start the simulator on your machine (or a Docker container):
 
    ```bash
-   python simulator/inverter_simulator.py --brand solis --port 5020
+   uv run python simulator/inverter_simulator.py --brand solis --port 5020
    ```
 
 2. In Home Assistant, add the **HH Modbus Control** integration:
