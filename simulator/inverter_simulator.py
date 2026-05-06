@@ -453,7 +453,16 @@ def build_sensor_info_and_map(
             multiplier = entity.get("multiplier", 0)
             data_type = entity.get("data_type")
             is_hidden = bool(entity.get("hidden") or entity.get("type") == "reserve")
-            is_string = data_type == DataType.STRING
+            is_string = data_type == DataType.STRING or data_type == "STRING"
+
+            # Normalise data_type to the string name (e.g. "S16") regardless of
+            # whether the sensor file stores it as a DataType enum or a raw string.
+            if data_type is None:
+                dt_name: str | None = None
+            elif isinstance(data_type, str):
+                dt_name = data_type
+            else:
+                dt_name = data_type.name
 
             for addr_str, val in zip(registers, values):
                 reg_map[int(addr_str)] = val
@@ -469,7 +478,7 @@ def build_sensor_info_and_map(
                 "register_type": register_type,
                 "unit": entity.get("unit_of_measurement", ""),
                 "multiplier": multiplier,
-                "data_type": data_type.name if data_type is not None else None,
+                "data_type": dt_name,
                 "display_value": display_val,
                 "hidden": is_hidden,
                 "is_string": is_string,
@@ -481,10 +490,23 @@ def build_sensor_info_and_map(
 def _compute_display_value(
     raw_values: list[int],
     multiplier: float,
-    data_type,
+    data_type: "DataType | None",
     count: int,
-) -> float | str:
-    """Convert raw Modbus register values to a human-readable display value."""
+) -> float | int:
+    """Convert raw Modbus register value(s) to a human-readable display value.
+
+    Args:
+        raw_values: List of raw unsigned-16-bit register words (high word first
+                    for 32-bit sensors).
+        multiplier: The sensor's scaling multiplier.  A value of 0 means the raw
+                    register is returned unchanged.  A negative multiplier implies
+                    the raw value is signed.
+        data_type:  The :class:`DataType` enum member for this sensor, or *None*.
+        count:      Number of registers the sensor occupies (1 or 2).
+
+    Returns:
+        The scaled display value as a *float* (or *int* when multiplier is 0).
+    """
     if not raw_values:
         return 0
     if multiplier == 0:
@@ -492,11 +514,11 @@ def _compute_display_value(
 
     if count >= 2 and len(raw_values) >= 2:
         raw = (raw_values[0] << 16) | raw_values[1]
-        if data_type == DataType.S32 and raw > 0x7FFF_FFFF:
+        if (data_type == DataType.S32 or data_type == "S32") and raw > 0x7FFF_FFFF:
             raw -= 0x1_0000_0000
     else:
         raw = raw_values[0]
-        if data_type == DataType.S16 and raw > 32767:
+        if (data_type == DataType.S16 or data_type == "S16") and raw > 32767:
             raw -= 65536
         elif multiplier < 0 and raw > 32767:
             raw -= 65536
@@ -510,7 +532,20 @@ def _display_to_raw_values(
     data_type_name: str | None,
     count: int,
 ) -> list[int]:
-    """Convert a display value back to raw Modbus register word(s)."""
+    """Convert a human-readable display value back to raw Modbus register word(s).
+
+    Args:
+        display_value:  The value as shown in the UI (already scaled by multiplier).
+        multiplier:     The sensor's scaling multiplier.  0 means pass-through (no
+                        scaling); the raw value is clamped to unsigned 16-bit range.
+        data_type_name: String name of the :class:`DataType` (e.g. ``"S16"``,
+                        ``"U32"``), or *None* to default to unsigned 16-bit.
+        count:          Number of registers the sensor occupies (1 or 2).
+
+    Returns:
+        A list of ``count`` unsigned 16-bit integers (high word first for 32-bit
+        sensors) ready to be written to the Modbus datastore.
+    """
     if multiplier == 0:
         v = max(0, min(65535, round(float(display_value))))
         return [v] * count
@@ -816,7 +851,7 @@ def _make_web_app(
     holding_map: dict[int, int],
     input_map: dict[int, int],
     sensor_info: list[dict],
-    sim_core,
+    sim_core: "object | None",
     slave: int,
 ) -> "_aiohttp_web.Application":
     """Create and return the aiohttp Application for the Web UI."""
@@ -888,9 +923,9 @@ async def _handle_update(request: "_aiohttp_web.Request") -> "_aiohttp_web.Respo
         register: int = int(data["register"])
         display_value: float = float(data["display_value"])
         register_type: str = str(data.get("register_type", "holding"))
-    except (KeyError, ValueError, TypeError) as exc:
+    except (KeyError, ValueError, TypeError):
         return _aiohttp_web.Response(
-            text=json.dumps({"error": str(exc)}),
+            text=json.dumps({"error": "Invalid request: 'register', 'display_value' and optionally 'register_type' are required."}),
             status=400,
             content_type="application/json",
         )
@@ -1075,6 +1110,7 @@ def main() -> None:
         help=(
             "Enable the Web UI on this port (e.g. 8080). "
             "Open http://localhost:<PORT> in your browser to view and edit simulated register values. "
+            "The Web UI binds to 0.0.0.0 (all interfaces) — restrict access via firewall in untrusted networks. "
             "Requires aiohttp (pip install aiohttp). Disabled by default."
         ),
     )
