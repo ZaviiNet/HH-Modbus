@@ -3,10 +3,9 @@ import logging
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.template import is_number
 
 from custom_components.hh_modbus_control.const import CONTROLLER, REGISTER, SLAVE, VALUE
-from custom_components.hh_modbus_control.helpers import cache_get, is_correct_controller, register_update_signal
+from custom_components.hh_modbus_control.helpers import cache_get, is_correct_controller, is_number, register_update_signal
 from custom_components.hh_modbus_control.sensors.solis_base_sensor import SolisBaseSensor
 
 _LOGGER = logging.getLogger(__name__)
