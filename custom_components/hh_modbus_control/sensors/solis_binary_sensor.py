@@ -48,6 +48,9 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
         self._keep_alive = entity_definition.get("keep_alive", False)
         self._keep_alive_unsub = None
         self._tou_v1 = entity_definition.get("tou_v1", False)
+        # RC setpoints (e.g. 43135 force charge) only latch when the related
+        # power/timeout registers are re-written right after the mode is enabled.
+        self._companion_writes = tuple(entity_definition.get("companion_writes", ()))
 
     @property
     def available(self) -> bool:
@@ -114,7 +117,9 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
         if self._register == 90005:
             self._modbus_controller.enable_connection()
         else:
-            await self.set_register_bit(True)
+            # RC force-charge registers self-revert and the cached value can still
+            # say "on" while the inverter is off, so always re-send the command.
+            await self.set_register_bit(True, force=bool(self._companion_writes or self._keep_alive))
             if self._keep_alive:
                 self._schedule_keep_alive()
 
@@ -207,9 +212,19 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
             target_register = self._write_register
             await controller.async_write_holding_register(target_register, new_register_value)
             cache_save(self._hass, self._modbus_controller, target_register, new_register_value)
+            if value is True and self._companion_writes:
+                await self._write_companions()
 
         self._attr_is_on = value
         self._attr_available = True
+
+    async def _write_companions(self) -> None:
+        """Re-write cached RC setpoints after enabling force charge/discharge."""
+        for companion_register in self._companion_writes:
+            cached = cache_get(self._hass, self._modbus_controller, companion_register)
+            if cached is None:
+                continue
+            await self._modbus_controller.async_write_holding_register(companion_register, cached)
 
     @property
     def device_info(self):

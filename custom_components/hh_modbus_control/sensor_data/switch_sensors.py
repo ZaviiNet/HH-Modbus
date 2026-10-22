@@ -174,6 +174,14 @@ def get_switch_sensors(inverter_config):
                 },
                 {
                     "register": 43135,
+                    # Firmware only latches the RC mode when the related power and
+                    # timeout registers are written after it (issue #352), so mirror
+                    # the select entity's companion writes on the switch too.
+                    # keep_alive: the inverter reverts this RC register after the
+                    # timeout (43282) unless refreshed; refresh inside that window
+                    # so a switch left ON keeps forcing charge until turned off.
+                    "companion_writes": [43136, 43129, 43282],
+                    "keep_alive": True,
                     "entities": [
                         {"name": "RC Force Battery Charge", "on_value": 1},
                         {"name": "RC Force Battery Discharge", "on_value": 2},

@@ -1,6 +1,6 @@
 """Tests for the HH Modbus Control multi-brand integration and the ported upstream features."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant import config_entries, data_entry_flow
@@ -186,9 +186,66 @@ async def test_solis_setup_and_upstream_features(hass: HomeAssistant):
         entity_names = {entity.name for entity in runtime.entities["sensor"] + runtime.entities["sensor_derived"]}
         assert {"Grid Import Power", "Grid Export Power"} <= entity_names
 
+        force_switch = next(e for e in runtime.entities["switch"] if e.name == "RC Force Battery Charge")
+        assert force_switch._companion_writes == (43136, 43129, 43282)
+        assert force_switch._keep_alive is True
+
         assert await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
         assert getattr(entry, "runtime_data", None) is None
+
+
+async def test_force_charge_switch_writes_setpoints_and_timeout_after_mode():
+    """The 43135 switch must latch the RC mode by writing power/timeout afterwards."""
+    from custom_components.hh_modbus_control.sensors.solis_binary_sensor import SolisBinaryEntity
+
+    hass = MagicMock()
+    hass.create_task = MagicMock()
+    controller = MagicMock()
+    controller.connected.return_value = True
+    controller.host = "1.2.3.4"
+    controller.device_id = 1
+    controller.device_serial_number = None
+    controller.identification = None
+    controller.async_write_holding_register = AsyncMock()
+    controller.async_read_holding_register = AsyncMock()
+
+    cached = {43135: 0, 43136: 1500, 43129: 1200, 43282: 5}
+
+    def fake_cache_get(_hass, _controller, register):
+        return cached.get(register)
+
+    with (
+        patch("custom_components.hh_modbus_control.sensors.solis_binary_sensor.cache_get", side_effect=fake_cache_get),
+        patch("custom_components.hh_modbus_control.sensors.solis_binary_sensor.cache_save"),
+    ):
+        entity = SolisBinaryEntity(
+            hass,
+            controller,
+            {
+                "register": 43135,
+                "name": "RC Force Battery Charge",
+                "on_value": 1,
+                "companion_writes": [43136, 43129, 43282],
+            },
+        )
+        entity.async_write_ha_state = MagicMock()
+
+        await entity.async_turn_on()
+
+        assert controller.async_write_holding_register.await_args_list == [
+            ((43135, 1), {}),
+            ((43136, 1500), {}),
+            ((43129, 1200), {}),
+            ((43282, 5), {}),
+        ]
+
+        # A stale cache that already says "on" must not suppress the command: the
+        # inverter may have reverted without a poll yet.
+        controller.async_write_holding_register.reset_mock()
+        cached[43135] = 1
+        await entity.async_turn_on()
+        assert controller.async_write_holding_register.await_args_list[0] == ((43135, 1), {})
 
 
 @pytest.mark.asyncio
