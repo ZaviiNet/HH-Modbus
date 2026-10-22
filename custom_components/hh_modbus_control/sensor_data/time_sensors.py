@@ -4,7 +4,7 @@ from custom_components.hh_modbus_control.data.enums import InverterFeature, Inve
 def get_time_sensors(inverter_config):
     time_definitions = []
 
-    if inverter_config.type == InverterType.HYBRID:
+    if inverter_config.type in (InverterType.HYBRID, InverterType.ENERGY):
         time_definitions = [
             {"name": "Time-Charging Charge Start (Slot 1)", "register": 43143, "enabled": True},
             {"name": "Time-Charging Charge End (Slot 1)", "register": 43145, "enabled": True},
@@ -28,7 +28,10 @@ def get_time_sensors(inverter_config):
             {"name": "Time-Charging Discharge End (Slot 5)", "register": 43189, "enabled": True},
         ]
 
-    if inverter_config.type == InverterType.HYBRID or InverterFeature.V2 in inverter_config.features:
+    # V2 Grid-TOU slots live in the 43707/43750 holding groups, which only the
+    # HYBRID/ENERGY map polls. `has_v2` defaults to True, so an `or` here used to create
+    # 24 dead (and write-dangerous) time entities on GRID/STRING inverters.
+    if inverter_config.type in (InverterType.HYBRID, InverterType.ENERGY) and InverterFeature.V2 in inverter_config.features:
         time_definitions.extend(
             [
                 {"name": "Grid Time of Use Charge Start (Slot 1)", "register": 43711, "enabled": True},

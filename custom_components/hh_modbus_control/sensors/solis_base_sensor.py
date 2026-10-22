@@ -6,6 +6,7 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfApparentPower,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
@@ -17,12 +18,116 @@ from custom_components.hh_modbus_control.data.enums import Category, DataType, I
 from custom_components.hh_modbus_control.helpers import (
     _any_in,
     cache_get,
+    combine_u32,
+    combine_u32_le,
     extract_serial_number,
     split_s32,
+    split_s32_le,
     unique_id_generator,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Raw value range per register width, used to derive the *protocol ceiling*: the largest
+# value a register can physically carry. This is the generic fallback for definitions that
+# declare no "max" — it is never wrong-low, and unlike a guess it needs no per-model
+# knowledge. Deriving a ceiling from the inverter's AC rating instead is what produced
+# issues #438 and #455.
+DATA_TYPE_RAW_RANGES = {
+    DataType.U16.value: (0, 65535),
+    DataType.S16.value: (-32768, 32767),
+    DataType.U32.value: (0, 4294967295),
+    DataType.U32_LE.value: (0, 4294967295),
+    DataType.S32.value: (-2147483648, 2147483647),
+    DataType.S32_LE.value: (-2147483648, 2147483647),
+}
+
+# Definitions tag the limit the inverter's rated output governs with
+# "max_source": "inverter_rating" — the remote-control dispatch and battery-power
+# setpoints. The rating is surfaced as an advisory ``device_limit``, never as the
+# advertised max: HA rejects service calls above the advertised max, so a wrong-low
+# rating (misconfigured model, DC-side charging above the AC nameplate) would turn
+# into hard write failures — the same failure mode as #464/#467 on the BMS mirrors.
+# Never applied to grid-side registers (#438) and never inferred from the unit, which
+# is what made the old derivation retarget registers it never considered.
+MAX_SOURCE_INVERTER_RATING = "inverter_rating"
+
+# Battery-current setpoints, mapped to the register that publishes the BMS's own
+# live current limitation for that direction. Surfaced as an advisory ``device_limit``
+# (entity attribute + warning on write), NOT as the advertised max. Two field reports
+# disqualified a live register as a bound on what may be *configured*:
+#
+#   #467 — a real BMS (Dyness HV) derates the limit with SOC, so it moves through the
+#          day: the number's state ended up above its own max, TOU slots (scheduled
+#          config) were bounded by the instant the page was opened, and automation
+#          writes intermittently raised out_of_range.
+#   #464 — some firmware echoes the effective setpoint back on 33206/33207 ("Battery
+#          Max Charge/Discharge Current Mirror" — its name says mirror, and it behaves
+#          like one), so lowering the setpoint lowered the advertised max: a one-way
+#          ratchet (users stuck at 1-2 A until they went through Solis Cloud).
+#
+# #481 caught 33206/33207 doing the same echo on the *advisory* path: it reported a
+# stale "1 A" limit matching a prior setpoint rather than what the BMS could deliver,
+# while the separately-named "Battery Charge/Discharge Current Limitation (BMS)"
+# registers (33143/33144) — independent of anything written to a setpoint register —
+# read 300 A on the same install. Those are what's mapped here instead; 33206/33207
+# stay defined as their own read-only mirror sensors, just no longer read as the limit.
+#
+# The TOU slot and time-charging currents are mapped for the same reason the four
+# originals are (#455): their old literals (135 A / 300 A) sat below both a 15 kW LV
+# bank's ~293 A and the 580 A a parallel pair reports (#351).
+BATTERY_CURRENT_LIMIT_REGISTERS = {
+    # --- charge -> Battery Charge Current Limitation (BMS) ---
+    43012: 33143,  # Max Charge Current
+    43117: 33143,  # Battery Max Charge Current
+    43141: 33143,  # Time-Charging Charge Current
+    43709: 33143,  # Grid TOU Charge battery current (Slot 1)
+    43716: 33143,  # Grid TOU Charge battery current (Slot 2)
+    43723: 33143,  # Grid TOU Charge battery current (Slot 3)
+    43730: 33143,  # Grid TOU Charge battery current (Slot 4)
+    43737: 33143,  # Grid TOU Charge battery current (Slot 5)
+    43744: 33143,  # Grid TOU Charge battery current (Slot 6)
+    # --- discharge -> Battery Discharge Current Limitation (BMS) ---
+    43013: 33144,  # Max Discharge Current
+    43118: 33144,  # Battery Max Discharge Current
+    43142: 33144,  # Time-Charging Discharge Current
+    43751: 33144,  # Grid TOU Discharge battery current (Slot 1)
+    43758: 33144,  # Grid TOU Discharge battery current (Slot 2)
+    43765: 33144,  # Grid TOU Discharge battery current (Slot 3)
+    43772: 33144,  # Grid TOU Discharge battery current (Slot 4)
+    43779: 33144,  # Grid TOU Discharge battery current (Slot 5)
+    43786: 33144,  # Grid TOU Discharge battery current (Slot 6)
+}
+
+# The BMS limitation registers are U16 on a 0.1 A scale, same as the setpoints they
+# advise.
+BATTERY_CURRENT_LIMIT_MULTIPLIER = 0.1
+
+# The inverter's own instrumented current ceiling (#481 point 2): independent of the
+# BMS, and applies to every battery-current setpoint regardless of direction. Same
+# 0.1 A scale. Folded into ``device_limit`` as a second, min()'d factor rather than a
+# separate attribute, so the advisory number is "what can actually flow" without
+# requiring dashboards to combine two attributes themselves.
+INVERTER_MAX_CURRENT_REGISTER = 33041
+
+# Grid TOU cut-off voltage: charge slots 1-6, then discharge slots 1-6.
+_TOU_CUTOFF_VOLTAGE_REGISTERS = (43710, 43717, 43724, 43731, 43738, 43745, 43752, 43759, 43766, 43773, 43780, 43787)
+
+# Battery voltage setpoints. The protocol gives one range for LV banks and a much wider
+# one for HV: "Range:40—48 ... HV Series- Default:120; Range 100-999" (ESINV-33000ID, the
+# 33208-33211 read-side equivalents). The shipped literals cover the LV case only, which
+# leaves an HV owner — a 480 V pack is ordinary — unable to set these at all.
+HV_BATTERY_VOLTAGE_REGISTERS = {
+    43016,  # Floating Charge Voltage
+    43017,  # Equalizing Charge Voltage
+    43020,  # Overdischarge Voltage
+    43021,  # Forcecharge Voltage
+    *_TOU_CUTOFF_VOLTAGE_REGISTERS,
+}
+
+# The upper bound of that HV range. The lower bound (100 V) is deliberately not applied:
+# an inverter reporting a value below it would land outside its own entity's range.
+HV_BATTERY_VOLTAGE_MAX = 999
 
 
 class SolisBaseSensor:
@@ -45,9 +150,11 @@ class SolisBaseSensor:
         step=0.1,
         hidden=False,
         enabled=True,
+        registry_enabled=True,
         category: Category = None,
         min_value: int | None = None,
         max_value: int | None = None,
+        max_source: str | None = None,
         identification=None,
         poll_speed=PollSpeed.NORMAL,
         data_type: str | None = None,
@@ -59,6 +166,7 @@ class SolisBaseSensor:
         self.default = default
         self.registrars = registrars
         self.write_register = write_register
+        _LOGGER.debug(" self.registrars = %s | self.write_register = %s", self.registrars, self.write_register)
         self.editable = editable
         self.multiplier = multiplier
 
@@ -76,11 +184,16 @@ class SolisBaseSensor:
         self.unit_of_measurement = unit_of_measurement
         self.hidden = hidden
         self.state_class = state_class
-        self.max_value = max_value
+        # min before max: adjust_max also resolves the floor of a signed register
+        # (marked by a negative declared min), so it needs the min already in place.
+        self.min_value = min_value
+        self.max_source = max_source
         self.adjust_max(max_value)
         self.step = self.get_step(step)
         self.enabled = enabled
-        self.min_value = min_value
+        # Registry default only — unlike `enabled`, the register is still polled, so
+        # the entity works as soon as a user enables it (and derived sensors keep it).
+        self.registry_enabled = registry_enabled
         self.poll_speed = poll_speed
         self.category = category
         self.identification = identification
@@ -95,7 +208,13 @@ class SolisBaseSensor:
             hv_battery_sensitive_regs = {33205, 33206, 33207, 43013, 43117}
             if _any_in(self.registrars, hv_battery_sensitive_regs):
                 self.min_value = 0
-                self.step = min(self.step, 0.1)
+                self.step = 0.1 if self.step is None else min(self.step, 0.1)
+
+            # The declared voltage maxima describe a 48 V bank. On HV the protocol allows
+            # 100-999 V, and a 480 V pack is ordinary — leave the LV literal in place and
+            # an HV owner cannot set these at all.
+            if _any_in(self.registrars, HV_BATTERY_VOLTAGE_REGISTERS):
+                self.max_value = HV_BATTERY_VOLTAGE_MAX
 
         if inv_model in {"RHI-1P", "RHI-3P", "RAI-3K-48ES-5G"} and 43074 in self.registrars:
             self.multiplier = 1
@@ -105,17 +224,127 @@ class SolisBaseSensor:
                 self.multiplier = 0.01
 
     def adjust_max(self, max_default):
+        """Resolve the static ceiling: a declared ``"max"``, else the protocol ceiling.
+
+        The advertised bound answers "what may be configured", so it is static and
+        never below what the register can carry:
+
+        1. A declared ``"max"`` — a real protocol or datasheet constraint, audited.
+        2. The protocol ceiling — what the register can physically carry.
+
+        Live limits — the BMS mirror, the inverter's rated output — are deliberately
+        NOT in this chain. HA rejects ``number.set_value`` above the advertised max, so
+        a moving or wrong-low limit turns into hard write failures and out-of-range
+        states (#464, #467). They are advisory instead: see ``device_limit``.
+        """
+        if max_default is not None:
+            self.max_value = max_default
+            return
+
+        derived = self.protocol_max
+        self.max_value = derived
+        _LOGGER.debug("max for %s resolved to protocol ceiling %s (no declared max)", self.registrars, derived)
+
+        # A negative declared min marks a signed dispatch register (43128/43133/43134)
+        # as writable below zero; the floor then resolves by the same rule as the
+        # ceiling — what the register can physically carry — in the opposite direction.
+        # (A definition declaring its "max" keeps its declared min untouched above.)
+        if self.min_value is not None and self.min_value < 0:
+            self.min_value = self.protocol_min
+
+    def _inverter_rating_max(self) -> float | None:
+        """The inverter's rated output in this entity's unit, or None if unusable."""
+        rating = getattr(self.controller.inverter_config, "wattage_chosen", None)
+        if not isinstance(rating, (int, float)) or isinstance(rating, bool) or rating <= 0:
+            return None
+        if self.unit_of_measurement == UnitOfPower.KILO_WATT:
+            return rating / 1000
+        return rating
+
+    @property
+    def protocol_raw_range(self) -> tuple[int, int]:
+        """The raw (min, max) this register can carry, from its width."""
+        data_type = self.data_type
+        if data_type not in DATA_TYPE_RAW_RANGES:
+            # Mirror what _convert_raw_value assumes when nothing is declared: a pair of
+            # registers decodes as signed 32-bit, a lone one as unsigned 16-bit.
+            data_type = DataType.S32.value if len(self.registrars) > 1 else DataType.U16.value
+        return DATA_TYPE_RAW_RANGES[data_type]
+
+    @property
+    def protocol_max(self) -> float:
+        """The largest value this register can physically hold, in its own unit."""
+        # multiplier 0 is treated as 1 on the decode path; keep the two consistent.
+        return self.protocol_raw_range[1] * (self.multiplier or 1)
+
+    @property
+    def protocol_min(self) -> float:
+        """The smallest value this register can physically hold, in its own unit."""
+        return self.protocol_raw_range[0] * (self.multiplier or 1)
+
+    @property
+    def battery_current_limit_register(self) -> int | None:
+        """The BMS limitation register advising this setpoint, or None if it isn't one."""
+        for reg in self.registrars:
+            limit_register = BATTERY_CURRENT_LIMIT_REGISTERS.get(reg)
+            if limit_register is not None:
+                return limit_register
+        return None
+
+    @property
+    def device_limit_registers(self) -> tuple[int, ...]:
+        """Registers whose updates should refresh ``device_limit`` — see solis_number_sensor."""
+        registers = []
+        bms_register = self.battery_current_limit_register
+        if bms_register is not None:
+            registers.append(bms_register)
+            registers.append(INVERTER_MAX_CURRENT_REGISTER)
+        return tuple(registers)
+
+    @property
+    def device_limit(self) -> float | None:
+        """What the governing device reports it can do right now, or None.
+
+        Advisory only: surfaced as an entity attribute and checked on write for a log
+        warning, never advertised as the number's max. The BMS limit derates with SOC
+        through the day (#467), so it and the inverter's own instrumented ceiling
+        (#481) both disqualify themselves as bounds on what may be *configured* — the
+        device enforces its real limit itself at runtime. When both are available the
+        lower one governs, same as the real device would apply whichever binds first.
+        """
+        bms_register = self.battery_current_limit_register
+        if bms_register is not None:
+            candidates = [
+                v
+                for v in (
+                    self._register_current_value(bms_register, BATTERY_CURRENT_LIMIT_MULTIPLIER),
+                    self._register_current_value(INVERTER_MAX_CURRENT_REGISTER, BATTERY_CURRENT_LIMIT_MULTIPLIER),
+                )
+                if v is not None
+            ]
+            return min(candidates) if candidates else None
+        if self.max_source == MAX_SOURCE_INVERTER_RATING:
+            return self._inverter_rating_max()
+        return None
+
+    @property
+    def device_limit_source(self) -> str | None:
+        """The authority ``device_limit`` comes from, or None if this entity has none."""
+        if self.battery_current_limit_register is not None:
+            return "bms"
+        if self.max_source == MAX_SOURCE_INVERTER_RATING:
+            return MAX_SOURCE_INVERTER_RATING
+        return None
+
+    def _register_current_value(self, register: int, multiplier: float) -> float | None:
+        """A register's current value in amps, or None while it is absent/zero/unreadable."""
         try:
-            new_max = max_default
-            if self.unit_of_measurement == UnitOfElectricCurrent.AMPERE:
-                new_max = round((self.controller.inverter_config.wattage_chosen / 44) / 10) * 20
-            elif self.unit_of_measurement == UnitOfPower.WATT:
-                new_max = self.controller.inverter_config.wattage_chosen
-            elif self.unit_of_measurement == UnitOfPower.KILO_WATT:
-                new_max = self.controller.inverter_config.wattage_chosen / 1000
-            self.max_value = new_max
-        except Exception as e:
-            _LOGGER.error("❌ Dynamic UOM set failed, wanted = %s : %s", self.controller.inverter_config.wattage_chosen, e)
+            raw = cache_get(self.hass, self.controller, register)
+        except Exception:  # no cache yet (tests, early setup) — no advisory limit
+            return None
+        if not isinstance(raw, (int, float)) or isinstance(raw, bool) or raw <= 0:
+            return None
+        return round(raw * multiplier, 1)
 
     def get_step(self, wanted_step):
         if wanted_step is not None:
@@ -126,6 +355,21 @@ class SolisBaseSensor:
             return 0.1
         if self.unit_of_measurement == UnitOfPower.WATT:
             return 1
+        # Anything else has no sensible derived step; callers must cope with None.
+        return None
+
+    @property
+    def entity_category(self) -> EntityCategory | None:
+        """Diagnostic bucket for identity/version/clock-style registers.
+
+        Deliberately conservative: only entities with no device_class (model,
+        serial, firmware versions, clock parts, operating mode, internal bus
+        data) are demoted. Real measurements (temperature, currents, voltages)
+        keep their normal placement even when tagged an "Information" category.
+        """
+        if self.device_class is None and self.category in (Category.BASIC_INFORMATION, Category.DEVICE_INTERNAL_DATA):
+            return EntityCategory.DIAGNOSTIC
+        return None
 
     @property
     def get_raw_values(self):
@@ -145,7 +389,20 @@ class SolisBaseSensor:
         if len(self.registrars) >= 15:
             n_value = extract_serial_number(values)
         elif len(self.registrars) > 1:
-            combined_value = split_s32(values)
+            # Default to signed 32-bit big-endian (historical behaviour — the many
+            # 2-register power/current registers are genuinely signed). Registers
+            # explicitly tagged U32 (e.g. lifetime energy totals) decode unsigned so
+            # they never wrap negative; *_LE variants are low-word-first (the
+            # string-inverter EPM block 36028-36057 is documented little-endian).
+            if self.data_type == DataType.U32.value:
+                combined_value = combine_u32(values)
+            elif self.data_type == DataType.U32_LE.value:
+                combined_value = combine_u32_le(values)
+            elif self.data_type == DataType.S32_LE.value:
+                combined_value = split_s32_le(values)
+            else:
+                combined_value = split_s32(values)
+
             if self.multiplier == 0 or self.multiplier == 1:
                 n_value = round(combined_value)
             else:
@@ -205,7 +462,9 @@ class SolisSensorGroup:
                     unit_of_measurement=entity.get("unit_of_measurement", None),
                     hidden=entity.get("hidden", False),
                     editable=entity.get("editable", False),
-                    max_value=entity.get("max", 3000),
+                    registry_enabled=entity.get("registry_enabled", True),
+                    max_value=entity.get("max", None),
+                    max_source=entity.get("max_source", None),
                     min_value=entity.get("min", 0),
                     step=entity.get("step", None),
                     identification=identification,
@@ -213,7 +472,7 @@ class SolisSensorGroup:
                     default=entity.get("default", 0),
                     multiplier=entity.get("multiplier", 1),
                     data_type=entity.get("data_type", None),
-                    unique_id=unique_id_generator(controller, entity),
+                    unique_id=unique_id_generator(controller, entity.get("unique", "reserve")),
                     poll_speed=definition.get("poll_speed", PollSpeed.NORMAL),
                 ),
                 definition.get("entities", []),
@@ -240,7 +499,7 @@ class SolisSensorGroup:
         poll_speed: PollSpeed,
         identification=None,
         register_type: str = None,
-    ) -> "SolisSensorGroup":
+    ) -> SolisSensorGroup:
         inst = cls.__new__(cls)
         inst._sensors = list(sensors)
         inst.poll_speed = poll_speed

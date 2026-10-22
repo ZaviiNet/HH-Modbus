@@ -1,0 +1,201 @@
+{
+  "title": "Solis Modbus",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Seleccionar método de conexión",
+        "description": "Elija cómo está conectado el inversor Solis a Home Assistant.",
+        "data": {
+          "connection_type": "Tipo de conexión"
+        }
+      },
+      "config": {
+        "title": "Configuración del inversor",
+        "description": "Ingrese la configuración de Modbus para su inversor.",
+        "data": {
+          "host": "Dirección IP",
+          "port": "Puerto",
+          "slave": "ID de esclavo Modbus",
+          "serial_port": "Puerto serie",
+          "baudrate": "Tasa de baudios",
+          "bytesize": "Tamaño de byte",
+          "parity": "Paridad",
+          "stopbits": "Bits de parada",
+          "model": "Modelo del inversor",
+          "poll_interval_fast": "Intervalo de sondeo rápido (segundos)",
+          "poll_interval_normal": "Intervalo de sondeo normal (segundos)",
+          "poll_interval_slow": "Intervalo de sondeo lento (segundos)",
+          "poll_profile": "Perfil de sondeo (cuánto del mapa de registros se sondea)",
+          "extreme_include_battery": "Extremo: sondear también el grupo de batería/carga (SOC, carga, potencia de batería)",
+          "extreme_include_smart_port": "Extremo: sondear también la potencia CA del Smart Port (fases A/B/C, solo modelos con Smart Port)",
+          "suppress_night_offline_issue": "Suprimir el aviso de reparación 'datalogger inaccesible' mientras el sol esté bajo el horizonte",
+          "clock_sync": "Corregir automáticamente la deriva del reloj del inversor (escribe en el reloj del inversor; desactivar para monitorización de solo lectura)",
+          "identification": "Nombre de identificación",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Segundo medidor inteligente instalado (configuración de doble medidor Red + inversor FV)",
+          "has_epm": "EPM / gestor de potencia de exportación instalado (registros de medidor 36xxx)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Inverter",
+        "description": "Update the configuration for your Solis inverter.",
+        "data": {
+          "host": "Dirección IP",
+          "port": "Puerto",
+          "slave": "ID de esclavo Modbus",
+          "serial_port": "Puerto serie",
+          "baudrate": "Tasa de baudios",
+          "bytesize": "Tamaño de byte",
+          "parity": "Paridad",
+          "stopbits": "Bits de parada",
+          "model": "Modelo del inversor",
+          "poll_interval_fast": "Intervalo de sondeo rápido (segundos)",
+          "poll_interval_normal": "Intervalo de sondeo normal (segundos)",
+          "poll_interval_slow": "Intervalo de sondeo lento (segundos)",
+          "poll_profile": "Perfil de sondeo (cuánto del mapa de registros se sondea)",
+          "extreme_include_battery": "Extremo: sondear también el grupo de batería/carga (SOC, carga, potencia de batería)",
+          "extreme_include_smart_port": "Extremo: sondear también la potencia CA del Smart Port (fases A/B/C, solo modelos con Smart Port)",
+          "suppress_night_offline_issue": "Suprimir el aviso de reparación 'datalogger inaccesible' mientras el sol esté bajo el horizonte",
+          "clock_sync": "Corregir automáticamente la deriva del reloj del inversor (escribe en el reloj del inversor; desactivar para monitorización de solo lectura)",
+          "identification": "Nombre de identificación",
+          "inverter_serial": "Inverter Serial",
+          "has_v2": "Updated to V2 Firmware",
+          "has_pv": "Has PV (Solar Panels)",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_battery": "Has Battery Storage",
+          "has_hv_battery": "Has HV Battery Storage (100v+)",
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Segundo medidor inteligente instalado (configuración de doble medidor Red + inversor FV)",
+          "has_epm": "EPM / gestor de potencia de exportación instalado (registros de medidor 36xxx)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No se puede conectar al inversor. Verifique su configuración.",
+      "unknown": "Ocurrió un error inesperado.",
+      "invalid_model": "Modelo de inversor no válido o desconocido. Seleccione un modelo de la lista.",
+      "serial_required": "Se requiere el número de serie del inversor.",
+      "model_required": "Seleccione un modelo de inversor.",
+      "tcp_port_closed": "Nada acepta conexiones Modbus en esa dirección y puerto. El dispositivo puede ser accesible (responde al ping) pero no está sirviendo Modbus — compruebe que Modbus TCP esté habilitado en el registrador. Se sabe que el firmware reciente del registrador Solis cierra el puerto local 502; un puente RS485 a TCP es una solución alternativa.",
+      "serial_port_unsupported": "Este puerto serie no se puede usar. Use una ruta de dispositivo (p. ej. /dev/ttyUSB0), una pasarela socket:// o rfc2217://, un proxy serie de ESPHome como Home Assistant Connect AUX-2 (Home Assistant 2026.5 o posterior), o el tipo de conexión TCP.",
+      "poll_interval_below_floor": "El intervalo de sondeo rápido está por debajo del mínimo para el perfil seleccionado. Solo el perfil extremo permite intervalos inferiores a 10s (mínimo 2s)."
+    },
+    "abort": {
+      "already_configured": "Este dispositivo ya está configurado."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Modificar configuración de Solis Modbus",
+        "description": "Cambie la configuración de su inversor Solis. (reinicio recomendado)",
+        "data": {
+          "poll_interval_fast": "Intervalo de sondeo rápido (segundos)",
+          "poll_interval_normal": "Intervalo de sondeo normal (segundos)",
+          "poll_interval_slow": "Intervalo de sondeo lento (segundos)",
+          "poll_profile": "Perfil de sondeo (cuánto del mapa de registros se sondea)",
+          "extreme_include_battery": "Extremo: sondear también el grupo de batería/carga (SOC, carga, potencia de batería)",
+          "extreme_include_smart_port": "Extremo: sondear también la potencia CA del Smart Port (fases A/B/C, solo modelos con Smart Port)",
+          "suppress_night_offline_issue": "Suprimir el aviso de reparación 'datalogger inaccesible' mientras el sol esté bajo el horizonte",
+          "clock_sync": "Corregir automáticamente la deriva del reloj del inversor (escribe en el reloj del inversor; desactivar para monitorización de solo lectura)",
+          "model": "Modelo del inversor",
+          "has_v2": "Actualizado al Firmware V2",
+          "has_pv": "Tiene energía solar (PV)",
+          "has_battery": "Tiene almacenamiento de batería",
+          "has_hv_battery": "Almacenamiento de batería HV (100 V+)",
+          "has_generator": "Tiene generador",
+          "phases": "Fases",
+          "connection": "Tipo de conexión",
+          "inverter_serial": "Inverter Serial",
+          "has_ac_coupling": "Has AC Coupling",
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_dual_meter": "Segundo medidor inteligente instalado (configuración de doble medidor Red + inversor FV)",
+          "has_epm": "EPM / gestor de potencia de exportación instalado (registros de medidor 36xxx)"
+        }
+      }
+    },
+    "error": {
+      "poll_interval_below_floor": "El intervalo de sondeo rápido está por debajo del mínimo para el perfil seleccionado. Solo el perfil extremo permite intervalos inferiores a 10s (mínimo 2s)."
+    }
+  },
+  "services": {
+    "solis_write_holding_register": {
+      "name": "Escribir en el registro",
+      "description": "Escribe un valor en un registro",
+      "fields": {
+        "address": {
+          "name": "Dirección",
+          "description": "Dirección a escribir"
+        },
+        "value": {
+          "name": "Valor",
+          "description": "Valor a escribir"
+        },
+        "host": {
+          "name": "Inversor",
+          "description": "IP del inversor (solo necesario si tiene varios inversores)"
+        }
+      }
+    },
+    "solis_write_time": {
+      "name": "Cambiar la hora de una entidad",
+      "description": "Establece la hora de la entidad a la proporcionada",
+      "fields": {
+        "entity_id": {
+          "name": "ID de la Entidad",
+          "description": "ID de la entidad de tiempo que desea cambiar"
+        },
+        "time": {
+          "name": "Hora Deseada",
+          "description": "Hora en formato HH:MM o HH:MM:SS"
+        }
+      }
+    },
+    "solis_read_register": {
+      "name": "Leer registro",
+      "description": "Lee uno o más registros y devuelve los valores brutos (descubrimiento de registros / depuración)"
+    },
+    "solis_force_battery_charge": {
+      "name": "Forzar carga de batería",
+      "description": "Fuerza la carga de la batería (inversores híbridos); se revierte tras el tiempo límite"
+    },
+    "solis_force_battery_discharge": {
+      "name": "Forzar descarga de batería",
+      "description": "Fuerza la descarga de la batería (inversores híbridos); se revierte tras el tiempo límite"
+    },
+    "solis_stop_force_charge_discharge": {
+      "name": "Detener carga/descarga forzada",
+      "description": "Cancela una carga o descarga forzada activa"
+    },
+    "solis_dispatch": {
+      "name": "Despacho remoto",
+      "description": "Despacho en tiempo real: control de red/batería con failsafe en el inversor"
+    },
+    "solis_dispatch_stop": {
+      "name": "Detener despacho remoto",
+      "description": "Libera el despacho — el inversor vuelve inmediatamente al funcionamiento normal"
+    },
+    "solis_dispatch_schedule": {
+      "name": "Programar periodo de despacho",
+      "description": "Escribe uno de los seis periodos programados residentes en el inversor (sobrevive a reinicios de HA)"
+    }
+  },
+  "issues": {
+    "datalogger_unreachable": {
+      "title": "Datalogger de Solis inaccesible",
+      "description": "Sin lecturas Modbus correctas desde {host} desde {last_success}. El datalogger WiFi puede estar dormido, apagado o en estado semiabierto; la integración sigue reintentando con espera progresiva. Reinicie la alimentación del datalogger si persiste."
+    },
+    "serial_slave_id": {
+      "title": "El inversor Solis no responde en el ID de esclavo {slave}",
+      "description": "El inversor en {port} no responde en su ID de esclavo Modbus configurado {slave}, pero un dispositivo del bus responde en el ID de esclavo 1. Las versiones anteriores de esta integración enviaban todas las peticiones serie (RS485) al ID de esclavo 1, fuera cual fuera el ID configurado, así que esta configuración puede haber funcionado hasta ahora. Si el inversor está en el ID de esclavo 1, reconfigure la entrada de la integración y ponga el ID de esclavo en 1."
+    }
+  }
+}

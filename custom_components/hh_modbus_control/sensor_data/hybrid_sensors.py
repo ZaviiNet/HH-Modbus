@@ -18,6 +18,8 @@ from custom_components.hh_modbus_control.data.enums import Category, DataType, I
 hybrid_sensors = [
     {
         "register_start": 33000,
+        "extreme": True,  # identity: keeps device/serial detection working
+        "essential": True,
         "poll_speed": PollSpeed.ONCE,
         "entities": [
             {
@@ -76,6 +78,8 @@ hybrid_sensors = [
     },
     {
         "register_start": 35000,
+        "extreme": True,  # identity: keeps device/serial detection working
+        "essential": True,
         "poll_speed": PollSpeed.ONCE,
         "entities": [
             {
@@ -88,9 +92,34 @@ hybrid_sensors = [
         ],
     },
     {
-        "register_start": 33025,
+        "register_start": 33022,
+        "essential": True,
         "poll_speed": PollSpeed.SLOW,
         "entities": [
+            {
+                "name": "Clock (Year)",
+                "category": Category.BASIC_INFORMATION,
+                "unique": "solis_modbus_inverter_clock_year",
+                "register": ["33022"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Clock (Month)",
+                "category": Category.BASIC_INFORMATION,
+                "unique": "solis_modbus_inverter_clock_month",
+                "register": ["33023"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Clock (Day)",
+                "category": Category.BASIC_INFORMATION,
+                "unique": "solis_modbus_inverter_clock_day",
+                "register": ["33024"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
             {
                 "name": "Clock (Hours)",
                 "category": Category.BASIC_INFORMATION,
@@ -122,6 +151,7 @@ hybrid_sensors = [
     },
     {
         "register_start": 33029,
+        "essential": True,
         "poll_speed": PollSpeed.SLOW,
         "feature_requirement": [InverterFeature.PV],
         "entities": [
@@ -134,6 +164,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "PV Current Month Energy Generation",
@@ -144,6 +175,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "PV Last Month Energy Generation",
@@ -154,6 +186,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "PV Today Energy Generation",
@@ -184,6 +217,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "PV Last Year Energy Generation",
@@ -194,6 +228,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
         ],
     },
@@ -228,6 +263,8 @@ hybrid_sensors = [
     },
     {
         "register_start": 33049,
+        "extreme": True,  # live PV
+        "essential": True,
         "poll_speed": PollSpeed.FAST,
         "feature_requirement": [InverterFeature.PV],
         "entities": [
@@ -325,6 +362,7 @@ hybrid_sensors = [
     },
     {
         "register_start": 33070,
+        "essential": True,
         "poll_speed": PollSpeed.FAST,
         "entities": [
             {
@@ -489,9 +527,60 @@ hybrid_sensors = [
         ],
     },
     {
-        "register_start": 33122,
+        # Extended from single 33122: fault/status bitfield words 33116-33121 and
+        # the standard-operating-mode bits 33123 (volt-watt/volt-var/fixed-PF...)
+        # ride the same block read. Raw bitfields; decode tables in Ver3.4 App.4.
+        "register_start": 33116,
         "poll_speed": PollSpeed.FAST,
         "entities": [
+            {
+                "name": "Grid Fault Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_grid_fault_status_bits",
+                "register": ["33116"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Backup Fault Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_backup_fault_status_bits",
+                "register": ["33117"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Battery Fault Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_fault_status_bits_word",
+                "register": ["33118"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Inverter Fault Status Bits 1",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_inverter_fault_status_bits_1",
+                "register": ["33119"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Inverter Fault Status Bits 2",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_inverter_fault_status_bits_2",
+                "register": ["33120"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Operating Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_operating_status_bits",
+                "register": ["33121"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
             {
                 "name": "Operating Mode",
                 "category": Category.BASIC_INFORMATION,
@@ -500,10 +589,68 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "state_class": SensorStateClass.MEASUREMENT,
             },
+            {
+                "name": "Grid Standard Mode Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_grid_standard_mode_bits",
+                "register": ["33123"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        "register_start": 33126,
+        "extreme": True,  # live meter/CT — the signal export control loops need
+        "poll_speed": PollSpeed.FAST,
+        "entities": [
+            {
+                "name": "Meter Total Active Energy",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter_total_active_energy",
+                "register": ["33126", "33127"],
+                "device_class": SensorDeviceClass.ENERGY,
+                "multiplier": 0.001,
+                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+                "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
+            },
+            {
+                "name": "Meter Voltage",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter_voltage",
+                "register": ["33128"],
+                "device_class": SensorDeviceClass.VOLTAGE,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricPotential.VOLT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter Current",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter_current",
+                "register": ["33129"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter Active Power",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter_active_power",
+                "register": ["33130", "33131"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
         ],
     },
     {
         "register_start": 33132,
+        "extreme_battery": True,  # opt-in third frame: SOC, load, battery + grid power
+        "essential": True,
         "poll_speed": PollSpeed.FAST,
         "entities": [
             {
@@ -729,10 +876,23 @@ hybrid_sensors = [
                 "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
                 "state_class": SensorStateClass.MEASUREMENT,
             },
+            {
+                # AC<->DC bridge throughput (true inverter conversion power)
+                "name": "Inverting Rectifying Power",
+                "category": Category.AC_INFORMATION,
+                "unique": "solis_modbus_inverter_inverting_rectifying_power",
+                "register": ["33157"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
         ],
     },
     {
         "register_start": 33161,
+        "essential": True,
         "poll_speed": PollSpeed.SLOW,
         "entities": [
             {
@@ -744,6 +904,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Today Battery Charge Energy",
@@ -774,6 +935,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Today Battery Discharge Energy",
@@ -804,6 +966,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Today Energy Imported From Grid",
@@ -834,6 +997,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Today Energy Fed Into Grid",
@@ -864,6 +1028,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Today Energy Consumption",
@@ -884,6 +1049,32 @@ hybrid_sensors = [
                 "multiplier": 0.1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+            },
+            {"type": "reserve", "register": ["33181", "33182", "33183", "33184", "33185"]},
+            {
+                # 33186-33189: new in protocol Ver3.4 (pp.12-13) — energy through the
+                # inverter's own AC grid port (differs from the meter/CT figures above
+                # on AC-coupled and dual-source installs).
+                "name": "AC Grid Port Total Energy Fed In",
+                "category": Category.ENERGY_DATA,
+                "unique": "solis_modbus_inverter_ac_grid_port_total_energy_fed_in",
+                "register": ["33186", "33187"],
+                "device_class": SensorDeviceClass.ENERGY,
+                "multiplier": 1,
+                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+                "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
+            },
+            {
+                "name": "AC Grid Port Total Energy Consumption",
+                "category": Category.ENERGY_DATA,
+                "unique": "solis_modbus_inverter_ac_grid_port_total_energy_consumption",
+                "register": ["33188", "33189"],
+                "device_class": SensorDeviceClass.ENERGY,
+                "multiplier": 1,
+                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+                "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
         ],
     },
@@ -919,6 +1110,54 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "multiplier": 0.1,
                 "unit_of_measurement": UnitOfPower.KILO_WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Parallel CT Detection",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_parallel_ct_detection",
+                "register": ["33246"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                # Export-power-manager live state: setpoint vs realtime backflow +
+                # status bits (bit0 EPM on, bit1 failsafe triggered)
+                "name": "EPM Setpoint Power",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_epm_setpoint_power",
+                "register": ["33247"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 100,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {
+                "name": "EPM Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_epm_status_bits",
+                "register": ["33248"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "EPM Backflow Power Realtime",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_epm_backflow_power_realtime",
+                "register": ["33249"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 100,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {
+                "name": "Meter Placement Status Bits",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_meter_placement_status_bits",
+                "register": ["33250"],
+                "multiplier": 0,
                 "state_class": SensorStateClass.MEASUREMENT,
             },
         ],
@@ -1001,6 +1240,47 @@ hybrid_sensors = [
                 "multiplier": 0.1,
                 "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
                 "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        "register_start": 34391,
+        "extreme_smart_port": True,  # opt-in frame: AC-coupled PV behind the Smart Port (#501)
+        "poll_speed": PollSpeed.FAST,
+        "feature_requirement": [InverterFeature.SMART_PORT],
+        "entities": [
+            {
+                "name": "Smart Port Phase A Active Power",
+                "category": Category.SMART_PORT_INFORMATION,
+                "unique": "solis_modbus_inverter_smartport_a_active_power",
+                "register": ["34391"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {
+                "name": "Smart Port Phase B Active Power",
+                "category": Category.SMART_PORT_INFORMATION,
+                "unique": "solis_modbus_inverter_smartport_b_active_power",
+                "register": ["34392"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {
+                "name": "Smart Port Phase C Active Power",
+                "category": Category.SMART_PORT_INFORMATION,
+                "unique": "solis_modbus_inverter_smartport_c_active_power",
+                "register": ["34393"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
             },
         ],
     },
@@ -1218,6 +1498,7 @@ hybrid_sensors = [
                 "multiplier": 0.01,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Meter Total Active Energy To Grid",
@@ -1228,6 +1509,324 @@ hybrid_sensors = [
                 "multiplier": 0.01,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
+            },
+        ],
+    },
+    {
+        # TOU function version (Ver3.4 p18): 0xAA55 (43605) = V2 time-of-use, which
+        # hides the 43110 bit-1 (V1) TOU controls (issue #475). Own group so
+        # firmware without it only gets this one register disabled.
+        "register_start": 33289,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "TOU Function Version",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_tou_function_version",
+                "register": ["33289"],
+                "multiplier": 0,
+            },
+        ],
+    },
+    {
+        # Meter 2 block (issue #425, dual-meter "Grid + PV Inverter" installs).
+        # Documented in ESINV-33000ID 2020-09-15 pp.20-21 (changelog V002B000D00F
+        # "Add Meter2 info. Function code 33299-33324"); the Ver3.4 NON-NDA doc
+        # trims 33300-33338 but SolisCloud still reads it live. Gated behind
+        # DUAL_METER so single-meter installs never poll it.
+        "register_start": 33300,
+        "poll_speed": PollSpeed.FAST,
+        "feature_requirement": [InverterFeature.DUAL_METER],
+        "entities": [
+            {
+                # High byte: 0x01 Grid / 0x02 Load / 0x03 Grid+PV (dual meter);
+                # low byte: meter type (1 Gen 1Ph, 2 Acrel 3Ph, 3 Gen 3Ph, 4/5 Eastron, 6 none)
+                "name": "Meter 1 Type and Location",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter1_type_location",
+                "register": ["33300"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Type and Location",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_type_location",
+                "register": ["33301"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Voltage A",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_voltage_a",
+                "register": ["33302"],
+                "device_class": SensorDeviceClass.VOLTAGE,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricPotential.VOLT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Current A",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_current_a",
+                "register": ["33303"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Voltage B",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_voltage_b",
+                "register": ["33304"],
+                "device_class": SensorDeviceClass.VOLTAGE,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricPotential.VOLT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Current B",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_current_b",
+                "register": ["33305"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Voltage C",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_voltage_c",
+                "register": ["33306"],
+                "device_class": SensorDeviceClass.VOLTAGE,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricPotential.VOLT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 AC Current C",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_ac_current_c",
+                "register": ["33307"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Active Power A",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_active_power_a",
+                "register": ["33308", "33309"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Active Power B",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_active_power_b",
+                "register": ["33310", "33311"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Active Power C",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_active_power_c",
+                "register": ["33312", "33313"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Total Active Power",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_total_active_power",
+                "register": ["33314", "33315"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        "register_start": 33316,
+        "poll_speed": PollSpeed.SLOW,
+        "feature_requirement": [InverterFeature.DUAL_METER],
+        "entities": [
+            {
+                "name": "Meter 2 Reactive Power A",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_reactive_power_a",
+                "register": ["33316", "33317"],
+                "device_class": SensorDeviceClass.REACTIVE_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Reactive Power B",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_reactive_power_b",
+                "register": ["33318", "33319"],
+                "device_class": SensorDeviceClass.REACTIVE_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Reactive Power C",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_reactive_power_c",
+                "register": ["33320", "33321"],
+                "device_class": SensorDeviceClass.REACTIVE_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Total Reactive Power",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_total_reactive_power",
+                "register": ["33322", "33323"],
+                "device_class": SensorDeviceClass.REACTIVE_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfReactivePower.VOLT_AMPERE_REACTIVE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Apparent Power A",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_apparent_power_a",
+                "register": ["33324", "33325"],
+                "device_class": SensorDeviceClass.APPARENT_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfApparentPower.VOLT_AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Apparent Power B",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_apparent_power_b",
+                "register": ["33326", "33327"],
+                "device_class": SensorDeviceClass.APPARENT_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfApparentPower.VOLT_AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Apparent Power C",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_apparent_power_c",
+                "register": ["33328", "33329"],
+                "device_class": SensorDeviceClass.APPARENT_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfApparentPower.VOLT_AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Total Apparent Power",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_total_apparent_power",
+                "register": ["33330", "33331"],
+                "device_class": SensorDeviceClass.APPARENT_POWER,
+                "multiplier": 0,
+                "unit_of_measurement": UnitOfApparentPower.VOLT_AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Power Factor",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_power_factor",
+                "register": ["33332"],
+                "device_class": SensorDeviceClass.POWER_FACTOR,
+                "multiplier": 0.01,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {
+                "name": "Meter 2 Grid Frequency",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_grid_frequency",
+                "register": ["33333"],
+                "device_class": SensorDeviceClass.FREQUENCY,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfFrequency.HERTZ,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Meter 2 Total Active Energy From Grid",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_total_active_energy_from_grid",
+                "register": ["33334", "33335"],
+                "device_class": SensorDeviceClass.ENERGY,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+                "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
+            },
+            {
+                "name": "Meter 2 Total Active Energy To Grid",
+                "category": Category.METER_INFORMATION,
+                "unique": "solis_modbus_inverter_meter2_total_active_energy_to_grid",
+                "register": ["33336", "33337"],
+                "device_class": SensorDeviceClass.ENERGY,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
+                "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
+            },
+        ],
+    },
+    {
+        "register_start": 33512,
+        "poll_speed": PollSpeed.FAST,
+        "entities": [
+            {
+                "name": "AC Grid Port Active Power Phase A",
+                "category": Category.AC_INFORMATION,
+                "unique": "solis_modbus_inverter_ac_grid_port_active_power_phase_a",
+                "register": ["33512"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {"type": "reserve", "register": ["33513", "33514"]},
+            {
+                "name": "AC Grid Port Active Power Phase B",
+                "category": Category.AC_INFORMATION,
+                "unique": "solis_modbus_inverter_ac_grid_port_active_power_phase_b",
+                "register": ["33515"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+            {"type": "reserve", "register": ["33516", "33517"]},
+            {
+                "name": "AC Grid Port Active Power Phase C",
+                "category": Category.AC_INFORMATION,
+                "unique": "solis_modbus_inverter_ac_grid_port_active_power_phase_c",
+                "register": ["33518"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
             },
         ],
     },
@@ -1265,6 +1864,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Generator Phase B Active Power",
@@ -1301,6 +1901,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Household Load Year Energy",
@@ -1311,6 +1912,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Household Load Month Energy",
@@ -1321,6 +1923,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Household Load Today Energy",
@@ -1342,6 +1945,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Backup Load Year Energy",
@@ -1352,6 +1956,7 @@ hybrid_sensors = [
                 "multiplier": 0,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Backup Load Month Energy",
@@ -1362,6 +1967,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "Backup Load Today Energy",
@@ -1389,6 +1995,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "AC Coupling Year Power Generation",
@@ -1399,6 +2006,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "AC Coupling Month Power Generation",
@@ -1409,6 +2017,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                 "state_class": SensorStateClass.TOTAL_INCREASING,
+                "data_type": DataType.U32,
             },
             {
                 "name": "AC Coupling Today Power Generation",
@@ -1484,6 +2093,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 90,
                 "min": 70,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
                 "step": 1,
             },
@@ -1499,6 +2109,8 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 20,
                 "min": 5,
+                # Guess: the protocol allows the full 0-100% (33213, default 20%); 40 is a
+                # conservative sub-range, not a constraint. Widen if anyone reports it low.
                 "max": 40,
                 "step": 1,
             },
@@ -1513,7 +2125,11 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 20,
                 "min": 0,
-                "max": 200,
+                # No "max": protocol ceiling. A literal here caps LV/multi-pack banks below
+                # their own rated current; the BMS limitation register (33143) and the
+                # inverter's own ceiling (33041) are advisory only — the BMS one derates
+                # with SOC (#467) and 33206 ("mirror") echoes the setpoint (#464/#481), so
+                # they're surfaced as the device_limit attribute, never as the bound.
                 "step": 0.1,
             },
             {
@@ -1527,7 +2143,8 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 20,
                 "min": 0,
-                "max": 200,
+                # No "max": protocol ceiling; BMS limit (33144) + inverter ceiling (33041)
+                # advisory — see 43012.
                 "step": 0.1,
             },
             {"type": "reserve", "register": ["43014", "43015"]},
@@ -1543,6 +2160,8 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 53.5,
                 "min": 40.0,
+                # Datasheet: LV range 50-58 V (ESINV-33000ID, 33209). HV packs run 100-999 V
+                # and are widened in dynamic_adjustments rather than by this literal.
                 "max": 60.0,
                 "step": 0.1,
             },
@@ -1558,6 +2177,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 56.0,
                 "min": 40.0,
+                # Datasheet: LV range 54-60 V (33210). HV widened in dynamic_adjustments.
                 "max": 60.0,
                 "step": 0.1,
             },
@@ -1572,6 +2192,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 10,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
                 "step": 1,
             },
@@ -1585,6 +2206,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 200.0,
                 "min": 50.0,
+                # Guess: 4-digit cap, well under the 65535 Ah the register can hold. No source.
                 "max": 9999.0,
                 "step": 1,
             },
@@ -1600,6 +2222,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 56.0,
                 "min": 40,
+                # Datasheet: LV range 40-48 V (33208). HV widened in dynamic_adjustments.
                 "max": 60,
                 "step": 0.1,
             },
@@ -1615,6 +2238,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 48.0,
                 "min": 40,
+                # Datasheet: LV force-charge voltage; HV widened in dynamic_adjustments.
                 "max": 50,
                 "step": 0.1,
             },
@@ -1630,6 +2254,7 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 80.0,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
                 "step": 1,
             },
@@ -1646,7 +2271,9 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 3000.0,
                 "min": 0,
-                "max": 6000,
+                # Force-charge draws through the inverter, so its output rating is the
+                # advisory device_limit; the bound itself is the protocol ceiling.
+                "max_source": "inverter_rating",
             },
             {
                 "name": "Battery Force Charge Source",
@@ -1681,7 +2308,31 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 0,
                 "min": 0,
+                # Grid-connection limit, NOT the inverter rating: clamping it to wattage_chosen
+                # capped an S6-EH3P20K-H owner at 8000 W (#438). Raised to cover 20 kW sites.
                 "max": 20000,
+                "step": 1,
+            },
+        ],
+    },
+    {
+        "register_start": 43195,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Export Calibration",
+                "category": Category.AC_PORT_SETTING,
+                "unique": "solis_modbus_inverter_export_calibration",
+                "register": ["43195"],
+                "device_class": SensorDeviceClass.POWER,
+                "data_type": DataType.S16,
+                "multiplier": 1,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "editable": True,
+                "default": 0,
+                "min": -1000,
+                # Guess: a calibration offset, +/-1000 W of trim. No source; ample in practice.
+                "max": 1000,
                 "step": 1,
             },
         ],
@@ -1699,8 +2350,17 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "data_type": DataType.S16,
+                # No "max": protocol ceiling. The shipped ±10000 literal was an unsourced
+                # round number that capped a 20 kW SKU at half its rating (#351); the
+                # inverter's AC rating is advisory (device_limit), not a bound — HA would
+                # reject dispatch writes above a wrong-low rating (#464/#467 pattern).
+                # The negative min marks this writable below zero; the floor resolves to
+                # the protocol floor, same rule as the ceiling in the opposite direction.
+                # The -10000 value itself is never the bound — only its sign is read
+                # (an undeclared min defaults to 0, so a negative literal is the only
+                # way to say "signed" without hard-coding derivable protocol math).
                 "min": -10000,
-                "max": 10000,
+                "max_source": "inverter_rating",
                 "default": 0,
                 "register": ["43128"],
                 "multiplier": 10,
@@ -1715,7 +2375,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 6000,
+                # No "max": protocol ceiling. The shipped 6000 literal was unsourced and
+                # capped a 20 kW SKU (#351); the inverter's AC rating is advisory
+                # (device_limit) — see 43128.
+                "max_source": "inverter_rating",
                 "default": 1500,
                 "register": ["43129"],
                 "multiplier": 10,
@@ -1729,7 +2392,8 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 6000,
+                # No "max": protocol ceiling; inverter rating advisory — see 43128.
+                "max_source": "inverter_rating",
                 "default": 1500,
                 "register": ["43130"],
                 "multiplier": 10,
@@ -1743,7 +2407,8 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 6000,
+                # No "max": protocol ceiling; inverter rating advisory — see 43128.
+                "max_source": "inverter_rating",
                 "default": 1500,
                 "register": ["43131"],
                 "multiplier": 10,
@@ -1766,8 +2431,9 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "data_type": DataType.S16,
+                # Symmetric grid-dispatch setpoint; inverter rating advisory — see 43128.
                 "min": -10000,
-                "max": 10000,
+                "max_source": "inverter_rating",
                 "default": 0,
                 "register": ["43133"],
                 "multiplier": 10,
@@ -1782,8 +2448,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "data_type": DataType.S16,
+                # Reactive power: the apparent-power rating we hold for the inverter is
+                # the advisory device_limit (approximate, but sourced, unlike the old
+                # ±10000 literal); the bound itself is the protocol ceiling — see 43128.
                 "min": -10000,
-                "max": 10000,
+                "max_source": "inverter_rating",
                 "default": 0,
                 "register": ["43134"],
                 "multiplier": 10,
@@ -1807,7 +2476,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 10000,
+                # The register #351 was filed against: a 10000 literal stopped an
+                # S6-EH3P20K owner force-charging above half their rating. Rating is
+                # advisory (device_limit); the bound is the protocol ceiling — see 43128.
+                "max_source": "inverter_rating",
                 "default": 1500,
                 "register": ["43136"],
                 "multiplier": 10,
@@ -1823,6 +2495,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 10,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
                 "default": 10,
             },
@@ -1843,7 +2516,9 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 135,
+                # No "max": protocol ceiling; BMS limit (33143) + inverter ceiling (33041)
+                # advisory — see 43012. The old 135 A literal sat below the ~293 A a 15 kW
+                # LV bank draws at its own nameplate.
                 "step": 0.1,
                 "default": 50,
             },
@@ -1858,7 +2533,8 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 135,
+                # No "max": protocol ceiling; BMS limit (33144) + inverter ceiling (33041)
+                # advisory — see 43012.
                 "step": 0.1,
                 "default": 50,
             },
@@ -2246,6 +2922,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 600,
+                # Guess: 600-10800 s (10 min - 3 h) scan interval. Plausible, unsourced.
                 "max": 10800,
             },
             {"type": "reserve", "register": ["43362"]},
@@ -2269,6 +2946,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Guess: 100 kW generator input. No source; far above any residential set.
                 "max": 100,
             },
             {
@@ -2296,6 +2974,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": PERCENTAGE,
                 "min": 0.01,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
                 "default": 100,
                 "state_class": SensorStateClass.MEASUREMENT,
@@ -2312,6 +2991,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Guess: 100 kW — see 43364.
                 "max": 100,
                 "default": 90,
             },
@@ -2326,6 +3006,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Guess: 100 kW — see 43364.
                 "max": 100,
             },
         ],
@@ -2350,6 +3031,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2363,7 +3045,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 1)",
@@ -2376,7 +3062,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 1)",
@@ -2424,6 +3113,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2437,7 +3127,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 2)",
@@ -2450,7 +3144,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 2)",
@@ -2498,6 +3195,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2511,7 +3209,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 3)",
@@ -2524,7 +3226,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 3)",
@@ -2572,6 +3277,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2585,7 +3291,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 4)",
@@ -2598,7 +3308,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 4)",
@@ -2646,6 +3359,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2659,7 +3373,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 5)",
@@ -2672,7 +3390,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 5)",
@@ -2720,6 +3441,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2733,7 +3455,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge cut off voltage (Slot 6)",
@@ -2746,7 +3472,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Charge Start Hour (Slot 6)",
@@ -2800,6 +3529,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2813,7 +3543,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 1)",
@@ -2826,7 +3560,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 1)",
@@ -2874,6 +3611,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2887,7 +3625,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 2)",
@@ -2900,7 +3642,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 2)",
@@ -2948,6 +3693,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -2961,7 +3707,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 3)",
@@ -2974,7 +3724,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 3)",
@@ -3022,6 +3775,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -3035,7 +3789,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 4)",
@@ -3048,7 +3806,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 4)",
@@ -3096,6 +3857,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -3109,7 +3871,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 5)",
@@ -3122,7 +3888,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 5)",
@@ -3170,6 +3939,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -3183,7 +3953,11 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
-                "max": 300,
+                # No "max": protocol ceiling, like every other battery-current setpoint;
+                # the BMS mirror is an advisory device_limit attribute, not a bound
+                # (#464/#467). The removed 300 A literal sat under the 580 A a
+                # parallel pair reports (#351).
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge cut off voltage (Slot 6)",
@@ -3196,7 +3970,10 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # 300 V covers an LV bank; HV_BATTERY installs are widened to the
+                # protocol's 999 V in dynamic_adjustments (a 480 V pack is ordinary).
                 "max": 300,
+                "step": 0.1,
             },
             {
                 "name": "Grid Time of Use Discharge Start Hour (Slot 6)",
@@ -3293,6 +4070,7 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 7,
+                # Spec: percentage register, "Range（0-100%）" (ESINV-33000ID, 33213/33214).
                 "max": 100,
             },
             {
@@ -3306,6 +4084,9 @@ hybrid_sensors = [
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
                 "min": 0,
+                # SUSPECT: grid-side, so the inverter rating is the wrong bound by construction
+                # (#438) — yet 15000 would cap a 20 kW site. Same shape as 43074 before it was
+                # raised; no reporter yet. Revisit with 43291.
                 "max": 15000,
             },
         ],
@@ -3338,7 +4119,11 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "unit_of_measurement": UnitOfPower.WATT,
                 "editable": True,
+                # SAPN-only: the control is disabled in the registry by default; the
+                # read-only sensor stays, since 0 W here silently blocks export (#499).
+                "registry_enabled": False,
                 "min": 0,
+                # SUSPECT: grid-side export limit capped at 15000 — see 43488.
                 "max": 15000,
                 "default": 0,
                 "state_class": SensorStateClass.MEASUREMENT,
@@ -3382,6 +4167,15 @@ hybrid_sensors = [
                 "hidden": True,
                 "state_class": SensorStateClass.MEASUREMENT,
             },
+            {
+                "name": "Backup Supply value",
+                "category": Category.BATTERY_SETTING,
+                "unique": "solis_modbus_inverter_backup_supply_value",
+                "register": ["43111"],
+                "multiplier": 1,
+                "hidden": True,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
         ],
     },
     {
@@ -3399,7 +4193,8 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 20,
                 "min": 0,
-                "max": 200,
+                # No "max": protocol ceiling; BMS limit (33143) + inverter ceiling (33041)
+                # advisory — see 43012.
                 "step": 0.1,
             },
             {
@@ -3413,7 +4208,8 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 20,
                 "min": 0,
-                "max": 200,
+                # No "max": protocol ceiling; BMS limit (33144) + inverter ceiling (33041)
+                # advisory — see 43012.
                 "step": 0.1,
             },
         ],
@@ -3432,8 +4228,362 @@ hybrid_sensors = [
                 "editable": True,
                 "default": 5,
                 "min": 1,
+                # Guess: 1-30 min dead-man timeout on remote control. Unsourced.
                 "max": 30,
                 "step": 1,
+            },
+        ],
+    },
+    {
+        # Battery/backup settings mirrors + fast battery current (input side —
+        # poll-safe confirmation of holding-register settings)
+        "register_start": 33200,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Backup Output Enabled Mirror",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_backup_output_enabled_mirror",
+                "register": ["33200"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Backup Voltage Reference",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_backup_voltage_reference",
+                "register": ["33201"],
+                "device_class": SensorDeviceClass.VOLTAGE,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricPotential.VOLT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Backup Frequency Reference",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_backup_frequency_reference",
+                "register": ["33202"],
+                "device_class": SensorDeviceClass.FREQUENCY,
+                "multiplier": 0.01,
+                "unit_of_measurement": UnitOfFrequency.HERTZ,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Battery Charge Discharge Enabled Mirror",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_charge_discharge_enabled_mirror",
+                "register": ["33203"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                # 0 = charging, 1 = discharging
+                "name": "Battery Direction Mirror",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_direction_mirror",
+                "register": ["33204"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {"type": "reserve", "register": ["33205"]},
+            {
+                "name": "Battery Max Charge Current Mirror",
+                "category": Category.BATTERY_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_max_charge_current_mirror",
+                "register": ["33206"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Battery Max Discharge Current Mirror",
+                "category": Category.BATTERY_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_max_discharge_current_mirror",
+                "register": ["33207"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {"type": "reserve", "register": ["33208", "33209", "33210", "33211", "33212"]},
+            {
+                "name": "Overdischarge SOC Mirror",
+                "category": Category.BATTERY_INFORMATION,
+                "unique": "solis_modbus_inverter_overdischarge_soc_mirror",
+                "register": ["33213"],
+                "device_class": SensorDeviceClass.BATTERY,
+                "multiplier": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Force Charge SOC Mirror",
+                "category": Category.BATTERY_INFORMATION,
+                "unique": "solis_modbus_inverter_force_charge_soc_mirror",
+                "register": ["33214"],
+                "device_class": SensorDeviceClass.BATTERY,
+                "multiplier": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "AFCI Status",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_afci_status",
+                "register": ["33215"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Leakage Current",
+                "category": Category.STATUS_INFORMATION,
+                "unique": "solis_modbus_inverter_leakage_current",
+                "register": ["33216"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.001,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                # 2024+ firmware: <1 s battery current (33135/33149 are smoothed);
+                # small per-unit offset possible; reads 0 when battery DC/DC is off
+                "name": "Battery Current Fast",
+                "category": Category.BATTERY_INFORMATION,
+                "unique": "solis_modbus_inverter_battery_current_fast",
+                "register": ["33217"],
+                "device_class": SensorDeviceClass.CURRENT,
+                "multiplier": 0.1,
+                "unit_of_measurement": UnitOfElectricCurrent.AMPERE,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+            },
+        ],
+    },
+    {
+        # Remote Dispatch capability flags (Ver3.4): 34502 == 0xAA55 (43605) means
+        # the 44100-44199 dispatch block is supported; 34503 = function map.
+        "register_start": 34502,
+        "poll_speed": PollSpeed.ONCE,
+        "entities": [
+            {
+                "name": "Remote Dispatch Capability",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_remote_dispatch_capability",
+                "register": ["34502"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Remote Dispatch Function Map",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_remote_dispatch_function_map",
+                "register": ["34503"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        # Remote Dispatch running status (input 34504). Deliberately its own group:
+        # 34502/34503 above are fixed for a given firmware and polled ONCE, but this
+        # one changes whenever an external controller starts or stops dispatching.
+        # Useful on its own even without write support — it answers "is something
+        # currently steering this inverter?". SLOW to match the 44100 dispatch-state
+        # group rather than add a fast poll to an already-busy datalogger.
+        "register_start": 34504,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Remote Dispatch Running Status",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_remote_dispatch_running_status",
+                "register": ["34504"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        # Remote Dispatch real-time state (holding 44100-44112) — read-only view
+        # of the dispatch the solis_dispatch* services command. RAM-side registers.
+        "register_start": 44100,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Dispatch Active",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_active",
+                "register": ["44100"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Failsafe Interval",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_failsafe_interval",
+                "register": ["44101"],
+                "multiplier": 1,
+                "unit_of_measurement": UnitOfTime.MINUTES,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Limit Switches",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_limit_switches",
+                "register": ["44102"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Import Limit",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_import_limit",
+                "register": ["44103"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 100,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Export Limit",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_export_limit",
+                "register": ["44104"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 100,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                # 1 hold, 2 battery power, 3 PCC target, 4 grid-port target,
+                # 5 self-consumption, 6 feed-in priority
+                "name": "Dispatch Control Mode",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_control_mode",
+                "register": ["44105"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                # Mode 2: +charge/-discharge; modes 3/4: +export/-import
+                "name": "Dispatch Power Target",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_power_target",
+                "register": ["44106", "44107"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Function Bits",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_function_bits",
+                "register": ["44108"],
+                "multiplier": 0,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch SOC Lower Limit",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_soc_lower_limit",
+                "register": ["44109"],
+                "device_class": SensorDeviceClass.BATTERY,
+                "multiplier": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch SOC Upper Limit",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_soc_upper_limit",
+                "register": ["44110"],
+                "device_class": SensorDeviceClass.BATTERY,
+                "multiplier": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch Battery Reserve SOC",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_battery_reserve_soc",
+                "register": ["44111"],
+                "device_class": SensorDeviceClass.BATTERY,
+                "multiplier": 1,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+            {
+                "name": "Dispatch PV Limit Percentage",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_dispatch_pv_limit_percentage",
+                "register": ["44112"],
+                "multiplier": 0.01,
+                "unit_of_measurement": PERCENTAGE,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        # Instant output-limit gate (GrugBus write-verified): 0xAA enable / 0x55 disable
+        "register_start": 43070,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Output Limit Gate",
+                "category": Category.POWER_CONTROL_SETTING,
+                "unique": "solis_modbus_inverter_output_limit_gate",
+                "register": ["43070"],
+                "multiplier": 0,
+                "hidden": True,
+                "state_class": SensorStateClass.MEASUREMENT,
+            },
+        ],
+    },
+    {
+        # Instant AC output clamp in watts (S16 x10 W, GrugBus write-verified).
+        # Editable but registry-disabled by default; needs the 43070 gate = 0xAA.
+        "register_start": 43081,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Output Power Clamp",
+                "category": Category.POWER_CONTROL_SETTING,
+                "unique": "solis_modbus_inverter_output_power_clamp",
+                "register": ["43081"],
+                "device_class": SensorDeviceClass.POWER,
+                "multiplier": 10,
+                "unit_of_measurement": UnitOfPower.WATT,
+                "state_class": SensorStateClass.MEASUREMENT,
+                "data_type": DataType.S16,
+                "editable": True,
+                "enabled": False,
+                "min": 0,
+                # Guess: 60 kW clamp, ample for every SKU in the catalogue. Unsourced.
+                "max": 60000,
+                "step": 10,
+            },
+        ],
+    },
+    {
+        # Remote Active Power Control Port Selection Command (Ver 3.4 register 44280)
+        # BIT00-BIT03: AC/Battery port control selection
+        # BIT04-BIT07: PV Control (0 = invalid/default, 1 = PV shutdown)
+        # The whole register reverts to 0 if no valid command is received within
+        # the RC Timeout (register 43282, default 5 minutes), so users may want
+        # to extend the timeout or refresh the switch via automation.
+        "register_start": 44280,
+        "poll_speed": PollSpeed.SLOW,
+        "entities": [
+            {
+                "name": "Remote Active Power Control Command",
+                "category": Category.REMOTE_DISPATCH_SETTING,
+                "unique": "solis_modbus_inverter_remote_active_power_control_command",
+                "register": ["44280"],
+                "multiplier": 1,
+                "hidden": True,
+                "state_class": SensorStateClass.MEASUREMENT,
             },
         ],
     },
@@ -3453,13 +4603,21 @@ hybrid_sensors_derived = [
         "unique": "solis_modbus_inverter_clock_rectification",
         "multiplier": 0,
         "device_class": SensorDeviceClass.TIMESTAMP,
-        "register": ["90007", "33025", "33026", "33027"],
+        "register": ["90007", "33022", "33023", "33024", "33025", "33026", "33027"],
     },
     {
         "name": "Status String",
         "unique": "solis_modbus_inverter_current_status_string",
         "multiplier": 0,
         "register": ["33095"],
+    },
+    {
+        # Flexible Export switch (43292) + its export limit (43291). Switched on with a
+        # 0 W limit, every local export path is capped at 0 W with no other symptom (#499).
+        "name": "Flexible Export Status",
+        "unique": "solis_modbus_inverter_flexible_export_status",
+        "multiplier": 0,
+        "register": ["43292", "43291"],
     },
     {
         "name": "PV Power 1",
@@ -3542,12 +4700,33 @@ hybrid_sensors_derived = [
         "state_class": SensorStateClass.MEASUREMENT,
     },
     {
+        # Grid power split by direction (#524); the trailing flag picks the side: 0 export, 1 import.
+        "name": "Grid Export Power",
+        "category": Category.METER_INFORMATION,
+        "unique": "solis_modbus_inverter_grid_export_power",
+        "register": ["33263", "33264", "0"],
+        "device_class": SensorDeviceClass.POWER,
+        "multiplier": 0,
+        "unit_of_measurement": UnitOfPower.WATT,
+        "state_class": SensorStateClass.MEASUREMENT,
+    },
+    {
+        "name": "Grid Import Power",
+        "category": Category.METER_INFORMATION,
+        "unique": "solis_modbus_inverter_grid_import_power",
+        "register": ["33263", "33264", "1"],
+        "device_class": SensorDeviceClass.POWER,
+        "multiplier": 0,
+        "unit_of_measurement": UnitOfPower.WATT,
+        "state_class": SensorStateClass.MEASUREMENT,
+    },
+    {
         "name": "Today Net Grid Energy",
         "unique": "solis_modbus_inverter_today_net_grid_energy",
         "device_class": SensorDeviceClass.ENERGY,
         "multiplier": 0.1,
         "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
-        "state_class": SensorStateClass.TOTAL_INCREASING,
+        "state_class": SensorStateClass.TOTAL,
         "register": ["33175", "33171"],
     },
     {

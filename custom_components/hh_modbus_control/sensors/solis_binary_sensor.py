@@ -4,17 +4,21 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from custom_components.hh_modbus_control.modbus_controller import ModbusController
 from custom_components.hh_modbus_control.const import CONTROLLER, REGISTER, SLAVE, VALUE
 from custom_components.hh_modbus_control.helpers import (
     cache_get,
     cache_save,
+    get_bit_bool,
     is_correct_controller,
     register_update_signal,
+    set_bit,
+    tou_v2_active,
     unique_id_generator_binary,
 )
+from custom_components.hh_modbus_control.modbus_controller import ModbusController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +39,22 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
         self._inverted = entity_definition.get("inverted", None)
         self._attr_unique_id = unique_id_generator_binary(modbus_controller, self._register, self._bit_position, self._on_value)
         self._attr_name = entity_definition["name"]
+        self._attr_has_entity_name = True
+        self._attr_entity_registry_enabled_default = entity_definition.get("registry_enabled", True)
         self._attr_available = False
+        # Keep-alive: RC-style registers (e.g. 44280 PV shutdown) self-revert after
+        # the RC timeout (43282) — while ON, the bit is re-written inside that
+        # window. Fail-safe by design: if HA dies, the inverter reverts on its own.
+        self._keep_alive = entity_definition.get("keep_alive", False)
+        self._keep_alive_unsub = None
+        self._tou_v1 = entity_definition.get("tou_v1", False)
+
+    @property
+    def available(self) -> bool:
+        # V2 firmware clears the V1 TOU bit right after it is written (issue #475).
+        if self._tou_v1 and tou_v2_active(self._hass, self._modbus_controller):
+            return False
+        return self._attr_available
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -64,7 +83,13 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
                 if self._inverted:
                     bit_bool = not bit_bool
 
-            if self._register == 5:
+                _LOGGER.debug(f"Sensor update received, register = {updated_register}, value = {updated_value}, get_bit_bool = {bit_bool}")
+            else:
+                is_on = self._on_value == updated_value
+                _LOGGER.debug(f"Sensor update received, register = {updated_register}, value = {updated_value}, on_value = {self._on_value}, is_on = {is_on}, ")
+
+            # Virtual register 90005 = integration enable/disable (not a Modbus register)
+            if self._register == 90005:
                 self._attr_is_on = self._modbus_controller.enabled
                 self._attr_available = True
                 return self._attr_is_on
@@ -84,21 +109,75 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
     def is_on(self):
         return self._attr_is_on
 
-    def turn_on(self, **kwargs: Any) -> None:
-        if self._register == 5:
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        _LOGGER.debug(f"{self._register}-{self._bit_position} turn on called ")
+        if self._register == 90005:
             self._modbus_controller.enable_connection()
         else:
-            self.set_register_bit(True)
+            await self.set_register_bit(True)
+            if self._keep_alive:
+                self._schedule_keep_alive()
 
-    def turn_off(self, **kwargs: Any) -> None:
-        if self._register == 5:
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        _LOGGER.debug(f"{self._register}-{self._bit_position} turn off called ")
+        self._cancel_keep_alive()
+        if self._register == 90005:
             self._modbus_controller.disable_connection()
         else:
-            self.set_register_bit(False)
+            await self.set_register_bit(False)
 
-    def set_register_bit(self, value: bool):
+    def _keep_alive_interval(self) -> float:
+        """Refresh comfortably inside the RC timeout window (43282, minutes)."""
+        timeout_min = cache_get(self._hass, self._modbus_controller, 43282) or 5
+        return max(30.0, float(timeout_min) * 60 - 60)
+
+    def _schedule_keep_alive(self) -> None:
+        self._cancel_keep_alive()
+        self._keep_alive_unsub = async_call_later(self._hass, self._keep_alive_interval(), self._keep_alive_refresh)
+
+    def _cancel_keep_alive(self) -> None:
+        if self._keep_alive_unsub is not None:
+            self._keep_alive_unsub()
+            self._keep_alive_unsub = None
+
+    async def _keep_alive_refresh(self, _now) -> None:
+        self._keep_alive_unsub = None
+        if not self._attr_is_on:
+            return
+        # Force the write: the device may have reverted while the cache still
+        # holds our last-written value (no poll in between).
+        await self.set_register_bit(True, force=True)
+        self._schedule_keep_alive()
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._cancel_keep_alive()
+        await super().async_will_remove_from_hass()
+
+    async def set_register_bit(self, value: bool, force: bool = False):
+        """Set or clear a specific bit in the Modbus register, enforcing dependencies and conflicts.
+
+        force=True always writes, even when the cached value already matches —
+        needed by the keep-alive refresh, where the device may have silently
+        reverted while our cache still holds the value we last wrote.
+        """
         controller = self._modbus_controller
         current_register_value: int = cache_get(self._hass, self._modbus_controller, self._register)
+
+        if current_register_value is None and self._bit_position is not None:
+            # A read-modify-write from an empty cache (e.g. right after a reload,
+            # before this register's group has been polled) would start from 0 and
+            # clear every other bit in the register (issue #402). Read the live
+            # value from the inverter first.
+            registers = await controller.async_read_holding_register(self._register, 1)
+            if not registers:
+                _LOGGER.warning(
+                    f"({controller.host}.{controller.device_id}) Cannot toggle bit {self._bit_position} of register "
+                    f"{self._register}: no cached value and live read failed; skipping write to avoid clearing other bits"
+                )
+                return
+            current_register_value = registers[0]
+            cache_save(self._hass, controller, self._register, current_register_value)
+
         new_register_value = current_register_value
 
         if self._bit_position is not None:
@@ -122,9 +201,11 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
             else:
                 new_register_value = int(value)
 
-        if current_register_value != new_register_value and controller.connected():
+        _LOGGER.debug(f"Attempting bit {self._bit_position} to {value} in register {self._register}. New value for register {new_register_value}")
+
+        if (force or current_register_value != new_register_value) and controller.connected():
             target_register = self._write_register
-            self._hass.create_task(controller.async_write_holding_register(target_register, new_register_value))
+            await controller.async_write_holding_register(target_register, new_register_value)
             cache_save(self._hass, self._modbus_controller, target_register, new_register_value)
 
         self._attr_is_on = value
@@ -133,17 +214,3 @@ class SolisBinaryEntity(RestoreEntity, SwitchEntity):
     @property
     def device_info(self):
         return self._modbus_controller.device_info
-
-
-def set_bit(value, bit_position, new_bit_value):
-    if value is None:
-        value = 0
-    mask = 1 << bit_position
-    value &= ~mask
-    if new_bit_value:
-        value |= mask
-    return round(value)
-
-
-def get_bit_bool(modbus_value, bit_position):
-    return (modbus_value >> bit_position) & 1 == 1

@@ -32,6 +32,10 @@ class SolisSensor(RestoreSensor, SensorEntity):
         self._attr_state_class = sensor.state_class
         self._attr_native_unit_of_measurement = sensor.unit_of_measurement
         self._attr_available = not sensor.hidden and sensor.enabled
+        # Don't register hidden/disabled sensors as enabled entities — otherwise
+        # they clutter the UI and recorder as permanently-unavailable entities.
+        self._attr_entity_registry_enabled_default = sensor.enabled and not sensor.hidden
+        self._attr_entity_category = sensor.entity_category
         self._attr_suggested_display_precision = self.decimal_count(sensor.multiplier)
 
         self.is_added_to_hass = False
@@ -93,6 +97,7 @@ class SolisSensor(RestoreSensor, SensorEntity):
             self._received_values[updated_register] = updated_value
 
             if not all(reg in self._received_values for reg in self._register):
+                _LOGGER.debug("not all values received yet = %s", self._received_values)
                 return
 
             values = [self._received_values[reg] for reg in self._register]

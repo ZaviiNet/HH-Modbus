@@ -9,14 +9,22 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_utils
 
 from custom_components.hh_modbus_control.const import (
+    CONF_CLOCK_SYNC,
+    CONF_EXTREME_INCLUDE_BATTERY,
+    CONF_EXTREME_INCLUDE_SMART_PORT,
+    CONF_POLL_PROFILE,
     CONN_TYPE_TCP,
     CONTROLLER,
     DOMAIN,
     DRIFT_COUNTER,
-    NUMBER_ENTITIES,
+    POLL_PROFILE_ESSENTIAL,
+    POLL_PROFILE_EXTREME,
+    POLL_PROFILE_FULL,
+    POLL_PROFILES,
     REGISTER,
-    SENSOR_ENTITIES,
     SLAVE,
+    TOU_VERSION_REGISTER,
+    TOU_VERSION_V2,
     VALUE,
     VALUES,
 )
@@ -32,6 +40,16 @@ def hex_to_ascii(hex_value):
 
 
 def unique_id_generator(controller, third_value, fourth_value=None):
+    """Build a stable unique id from serial/identification/host + key parts.
+
+    ``third_value`` must be a string key (or register). Passing a full entity
+    definition dict was a historical bug that embedded ``str(dict)`` in the id;
+    dicts are accepted only as a safety net and reduced to their ``unique`` key.
+    """
+    if isinstance(third_value, dict):
+        _LOGGER.warning("unique_id_generator received an entity dict; use entity.get('unique') instead")
+        third_value = third_value.get("unique", "reserve")
+
     if fourth_value is None:
         if controller.device_serial_number is not None:
             return f"{DOMAIN}_{controller.device_serial_number}_{third_value}"
@@ -59,25 +77,46 @@ def extract_serial_number(values):
     return packed.decode("ascii", errors="ignore").strip("\x00\r\n ")
 
 
-def clock_drift_test(hass, controller, hours, minutes, seconds):
+def clock_drift_test(hass, controller, year, month, day, hours, minutes, seconds):
     current_time = dt_utils.now()
-    device_time = datetime(current_time.year, current_time.month, current_time.day, hours, minutes, seconds, tzinfo=current_time.tzinfo)
-    total_drift = (current_time - device_time).total_seconds()
+    try:
+        # RTC year register holds 0-99 (offset from 2000)
+        device_time = datetime(2000 + year, month, day, hours, minutes, seconds, tzinfo=current_time.tzinfo)
+        total_drift = abs((current_time - device_time).total_seconds())
+    except ValueError:
+        # RTC holds an impossible date (e.g. zeros after backup-power loss) — force a correction
+        total_drift = float("inf")
 
+    # Ensure structure. Counters are keyed per link+slave — a single global
+    # counter would let one inverter's drift streak trigger (or reset) another's.
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
-    drift_counter = hass.data[DOMAIN].get(DRIFT_COUNTER, 0)
+    counters = hass.data[DOMAIN].setdefault(DRIFT_COUNTER, {})
+    counter_key = register_cache_key(controller, "drift")
+    drift_counter = counters.get(counter_key, 0)
     clock_adjusted = False
 
-    if abs(total_drift) > 60:
+    if total_drift > 60:
         if drift_counter > 5:
             if controller.connected():
-                hass.create_task(controller.async_write_holding_registers(43003, [current_time.hour, current_time.minute, current_time.second]))
+                hass.create_task(
+                    controller.async_write_holding_registers(
+                        43000,
+                        [
+                            current_time.year % 100,
+                            current_time.month,
+                            current_time.day,
+                            current_time.hour,
+                            current_time.minute,
+                            current_time.second,
+                        ],
+                    )
+                )
                 clock_adjusted = True
         else:
-            hass.data[DOMAIN][DRIFT_COUNTER] = drift_counter + 1
+            counters[counter_key] = drift_counter + 1
     else:
-        hass.data[DOMAIN][DRIFT_COUNTER] = 0
+        counters[counter_key] = 0
 
     _LOGGER.debug(f"Drift: {total_drift}s, Counter: {drift_counter}, Adjusted: {clock_adjusted}")
     return clock_adjusted
@@ -129,29 +168,170 @@ def cache_get(hass: HomeAssistant, controller, register: str | int):
     return hass.data[DOMAIN][VALUES].get(register_cache_key(controller, register), None)
 
 
+def tou_v2_active(hass: HomeAssistant, controller) -> bool:
+    """True when the inverter reports V2 time-of-use (33289 == 0xAA55).
+
+    Unknown (not yet polled, or firmware without 33289) is False, so V1-only
+    inverters keep the 43110 bit-1 TOU controls (issue #475).
+    """
+    return cache_get(hass, controller, TOU_VERSION_REGISTER) == TOU_VERSION_V2
+
+
+def iter_platform_entities(hass: HomeAssistant, *platforms: str):
+    """Yield entities of the given platform keys across all Solis config entries."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        runtime = getattr(entry, "runtime_data", None)
+        if runtime is None:
+            continue
+        for platform in platforms:
+            yield from runtime.entities.get(platform, [])
+
+
 def mark_platform_entities_unavailable_for_base_sensors(hass: HomeAssistant, disabled_sensors: list) -> None:
     if not disabled_sensors:
         return
     disabled_set = frozenset(disabled_sensors)
-    domain_data = hass.data.get(DOMAIN) or {}
-    for bucket in (SENSOR_ENTITIES, NUMBER_ENTITIES):
-        for ent in domain_data.get(bucket) or []:
-            base = getattr(ent, "base_sensor", None)
-            if base is not None and base in disabled_set:
-                ent._attr_available = False
+    for ent in iter_platform_entities(hass, "sensor", "number"):
+        base = getattr(ent, "base_sensor", None)
+        if base is not None and base in disabled_set:
+            ent._attr_available = False
+            if ent.hass is not None:
                 ent.schedule_update_ha_state()
 
 
+def get_poll_profile(config_entry: ConfigEntry) -> str:
+    """Resolve the entry's poll profile, honouring the pre-#457 boolean.
+
+    Entries migrate to `poll_profile` on load, but options are merged over data at
+    read time and a stale `essential_only: True` option could otherwise be silently
+    dropped. Falling back to the boolean keeps a half-migrated entry polling the
+    subset the user actually chose.
+    """
+    config = {**config_entry.data, **config_entry.options}
+    profile = config.get(CONF_POLL_PROFILE)
+    if profile in POLL_PROFILES:
+        return profile
+    return POLL_PROFILE_ESSENTIAL if config.get("essential_only", False) else POLL_PROFILE_FULL
+
+
+def is_essential_only(config_entry: ConfigEntry) -> bool:
+    """True when the entry polls a reduced set, i.e. any profile but full.
+
+    Neither reduced profile polls the 43xxx holding groups, so writable entities
+    would sit permanently unknown — the write platforms skip creating them
+    (issue #149: a switch to expose only read-only entities).
+    """
+    return get_poll_profile(config_entry) != POLL_PROFILE_FULL
+
+
+def extreme_includes_battery(config_entry: ConfigEntry) -> bool:
+    """True when extreme mode should also poll the battery/load group.
+
+    Opt-in because it costs a third Modbus frame: worth it for battery-aware
+    export automations, wasted for pure meter-vs-voltage control loops.
+    """
+    return {**config_entry.data, **config_entry.options}.get(CONF_EXTREME_INCLUDE_BATTERY, False)
+
+
+def extreme_includes_smart_port(config_entry: ConfigEntry) -> bool:
+    """True when extreme mode should also poll the Smart Port AC power group.
+
+    Opt-in because it costs another Modbus frame per fast cycle, and only matters
+    where generation arrives through the Smart Port (AC-coupled PV, issue #501).
+    Inverters without the SMART_PORT feature skip the group regardless.
+    """
+    return {**config_entry.data, **config_entry.options}.get(CONF_EXTREME_INCLUDE_SMART_PORT, False)
+
+
+def clock_sync_enabled(config_entry: ConfigEntry) -> bool:
+    """True when the integration may correct inverter clock drift (issue #516).
+
+    Defaults on so entries created before the option existed keep syncing.
+    """
+    return bool({**config_entry.data, **config_entry.options}.get(CONF_CLOCK_SYNC, True))
+
+
+def is_clock_sync_sensor(entity: dict) -> bool:
+    """True for the derived sensor that drives clock-drift correction (synthetic 90007)."""
+    return "90007" in entity.get("register", [])
+
+
+def group_in_poll_profile(group: dict, profile: str, include_battery: bool = False, include_smart_port: bool = False) -> bool:
+    """True when a sensor group should be polled under the given profile."""
+    if profile == POLL_PROFILE_ESSENTIAL:
+        return bool(group.get("essential", False))
+    if profile == POLL_PROFILE_EXTREME:
+        if group.get("extreme", False):
+            return True
+        if include_battery and group.get("extreme_battery", False):
+            return True
+        return include_smart_port and bool(group.get("extreme_smart_port", False))
+    return True
+
+
+def registers_declared_by(groups) -> set[int]:
+    """Every register the given sensor groups actually poll."""
+    registers: set[int] = set()
+    for group in groups:
+        for entity in group.get("entities", []):
+            registers.update(int(r) for r in entity.get("register", []))
+    return registers
+
+
+def derived_sensor_is_supported(entity: dict, polled_registers: set[int], known_registers: set[int]) -> bool:
+    """True when every real source register of a derived sensor is being polled.
+
+    Derived entities are computed from other registers, so under a reduced profile
+    one whose sources are no longer polled would be created and then never receive
+    a value — the "created but permanently unknown" state profiles exist to avoid.
+
+    Their `register` lists mix real registers with synthetic ids (90006/90007) and
+    literal arguments (the 0/1 battery-direction flag), and neither is a register
+    any group declares. Intersecting with the known set is what separates them,
+    rather than guessing at numeric ranges.
+    """
+    sources = {int(r) for r in entity.get("register", [])} & known_registers
+    return sources <= polled_registers
+
+
 def set_controller(hass: HomeAssistant, controller, config_entry: ConfigEntry):
-    hass.data[DOMAIN][CONTROLLER][config_entry.entry_id] = controller
+    """Store the controller on both hass.data and the entry's runtime_data."""
+    # hass.data keeps the long-standing lookup used by this fork; runtime_data is
+    # the modern Home Assistant pattern used by the upstream code paths.
+    hass.data.setdefault(DOMAIN, {}).setdefault(CONTROLLER, {})[config_entry.entry_id] = controller
+    from custom_components.hh_modbus_control.runtime import SolisRuntimeData
+
+    config_entry.runtime_data = SolisRuntimeData(controller=controller)
 
 
 def get_controller_from_entry(hass: HomeAssistant, config_entry: ConfigEntry):
-    return hass.data[DOMAIN][CONTROLLER].get(config_entry.entry_id)
+    """Get the controller from the entry's runtime data, with a hass.data fallback."""
+    runtime = getattr(config_entry, "runtime_data", None)
+    if runtime is not None:
+        return runtime.controller
+    return hass.data.get(DOMAIN, {}).get(CONTROLLER, {}).get(config_entry.entry_id)
+
+
+def iter_controllers(hass: HomeAssistant):
+    """Yield every controller from runtime_data, then any hass.data leftovers."""
+    seen = set()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        runtime = getattr(entry, "runtime_data", None)
+        if runtime is not None and getattr(runtime, "controller", None) is not None:
+            seen.add(id(runtime.controller))
+            yield runtime.controller
+    for controller in hass.data.get(DOMAIN, {}).get(CONTROLLER, {}).values():
+        if id(controller) not in seen:
+            yield controller
 
 
 def get_controller(hass: HomeAssistant, host: str, slave: int = 1):
-    for controller in hass.data[DOMAIN][CONTROLLER].values():
+    """
+    Search for a controller matching the host and slave ID.
+    Used by services (write_holding_register) that only know the IP/Host.
+    """
+    for controller in iter_controllers(hass):
+        # Use getattr to be safe if controller hasn't fully initialized
         if getattr(controller, "host", None) == host and getattr(controller, "device_id", 0) == slave:
             return controller
     return None
@@ -160,7 +340,49 @@ def get_controller(hass: HomeAssistant, host: str, slave: int = 1):
 def split_s32(s32_values: list[int]):
     high_word = s32_values[0] - (1 << 16) if s32_values[0] & (1 << 15) else s32_values[0]
     low_word = s32_values[1] - (1 << 16) if s32_values[1] & (1 << 15) else s32_values[1]
+
+    # Combine the high and low words to form a signed 32-bit integer (two's complement).
     return (high_word << 16) | (low_word & 0xFFFF)
+
+
+def combine_u32_le(values: list[int]) -> int:
+    """Combine two 16-bit words (LOW word first) into an unsigned 32-bit integer.
+
+    The string-inverter EPM block (36028-36057) is documented little-endian
+    ("Low first, High Latter") — big-endian decode reads garbage once the raw
+    count exceeds 65535 (e.g. energies past 655.35 kWh).
+    """
+    return ((values[1] & 0xFFFF) << 16) | (values[0] & 0xFFFF)
+
+
+def split_s32_le(values: list[int]) -> int:
+    """Signed 32-bit from two 16-bit words with LOW word first."""
+    return split_s32([values[1], values[0]])
+
+
+def combine_u32(u32_values: list[int]) -> int:
+    """Combine two 16-bit words (high word first) into an unsigned 32-bit integer.
+
+    Used for registers explicitly tagged ``data_type: U32`` (e.g. lifetime energy
+    totals) so they never wrap negative once the raw count crosses 0x7FFFFFFF.
+    """
+    return ((u32_values[0] & 0xFFFF) << 16) | (u32_values[1] & 0xFFFF)
+
+
+def set_bit(value, bit_position, new_bit_value):
+    """Set or clear a specific bit in an integer value."""
+    if value is None:
+        value = 0
+    mask = 1 << bit_position
+    value &= ~mask  # Clear the bit
+    if new_bit_value:
+        value |= mask  # Set the bit
+    return round(value)
+
+
+def get_bit_bool(modbus_value, bit_position):
+    """Decode a Modbus value to the boolean state of the given (0-based) bit position."""
+    return (modbus_value >> bit_position) & 1 == 1
 
 
 def _any_in(target: list[int], collection: set[int]) -> bool:

@@ -8,6 +8,7 @@
 ## Table of Contents
 
 - [About](#about)
+- [What's New in 1.1.0](#whats-new-in-110)
 - [Supported Inverters](#supported-inverters)
 - [Installation](#installation)
 - [Setup & Configuration](#setup--configuration)
@@ -33,6 +34,23 @@ Key design goals:
 - **Local-first** — no cloud account required; works entirely on your LAN.
 
 > **Note — Solis cloud access:** connecting via RS485 directly to your inverter does not affect the Solis cloud app. If you use the S2 WiFi dongle for *both* Modbus and cloud you may need to temporarily disable Modbus during Solis firmware updates. See [Solis Modbus discussion #154](https://github.com/Pho3niX90/solis_modbus/discussions/154) for details.
+
+---
+
+## What's New in 1.1.0
+
+This release ports the upstream Solis Modbus **v4.4.0** fixes and features into HH Modbus Control while keeping the multi-brand architecture:
+
+- **ESPHome serial proxies** — Home Assistant Connect AUX-2 and other `esphome-hass://` ports are supported alongside USB RS485 and TCP.
+- **New Solis sensors** — Grid Import Power / Grid Export Power, flexible export status, and expanded hybrid/energy-storage registers.
+- **ENERGY inverters** — S6-EA1P and similar models now get the hybrid storage controls.
+- **Poll profiles** — Full / Essential / Extreme profiles, plus optional battery and Smart Port groups in Extreme mode.
+- **Clock sync toggle** — disable automatic inverter RTC synchronisation from the options flow.
+- **Dual meter / EPM** — options for a second smart meter and export power manager.
+- **New services** — `solis_read_register`, force charge/discharge, remote dispatch, and dispatch schedule. Existing `write_holding_register` and `set_time` service names remain available.
+- **Reliability** — half-open TCP detection, serial slave-ID checks, safer reconnect/unload, read-modify-write protection, and diagnostics download.
+
+Your existing entries, entity IDs, and multi-brand configurations are preserved.
 
 ---
 

@@ -1,10 +1,18 @@
 from custom_components.hh_modbus_control.data.enums import InverterFeature, InverterType
 
+# Register 43110 mode-defining bits (read mirror 33132). Every Storage Mode option
+# clears all of these before setting its own combo. Bits 3 (battery wakeup),
+# 5 (grid charge) and 7-10 are independent modifiers and must NEVER appear here —
+# the read-modify-write flow preserves them, which is what makes SolisCloud combos
+# like 33 -> 2080 (Self-Use + grid charge -> Peak Shaving + grid charge) work.
+# See issues #413 and #82.
+STORAGE_MODE_BITS = [0, 1, 2, 4, 6, 11]
+
 
 def get_select_sensors(inverter_config):
     sensor_groups = []
 
-    if inverter_config.type == InverterType.HYBRID:
+    if inverter_config.type in (InverterType.HYBRID, InverterType.ENERGY):
         sensor_groups = [
             {
                 "register": 43132,
@@ -32,16 +40,47 @@ def get_select_sensors(inverter_config):
                 ],
             },
             {
+                # SolisCloud calls this "Storage Mode" (issue #413 asked for exactly
+                # that dropdown). Renamed from "Work Mode" — the unique id
+                # (select_entity_43110) is unchanged, so existing entities migrate.
+                # Bit table: RS485_MODBUS ESINV-33000ID Hybrid Inverter V3.2 / Appendix 8
+                # + SolisCloud field captures (values 17/33/35/49/51/96/98/2080).
+                #
+                # Previous definition had two functional bugs (issue #413):
+                # - plain modes never cleared TOU bit 1, so leaving "+ TOU" was
+                #   impossible (35 -> "Self-Use" computed 35 again: no write);
+                # - cross-clearing was incomplete (e.g. Peak Shaving from 35 produced
+                #   2082 instead of the cloud's 2080).
+                # Every option now clears all STORAGE_MODE_BITS, then re-sets its own.
+                #
+                # Reserve/Backup (bit 4) was previously only offered paired with
+                # Self-Use. Discussion #496 asked for it alongside Feed-in Priority
+                # too, so it's not a primary bit_position here — it's a modifier
+                # that lives in `requires` on top of either base mode, same as TOU.
+                #
+                # Bit 1 is the *V1* TOU enable ("Optimized Revenue V1", Ver3.4 App.7).
+                # On V2 firmware (33289 == 0xAA55) the inverter clears it ~15 s after
+                # every write, so `tou_v1` options are hidden there (issue #475);
+                # V2 TOU is switched per period via the 43707 switches instead.
                 "register": 43110,
-                "name": "Work Mode",
+                "name": "Storage Mode",
                 "entities": [
-                    # Adheres to RS485_MODBUS ESINV-33000ID Hybrid Inverter V3.2 / Appendix 8
-                    {"bit_position": 0, "name": "Self-Use", "conflicts_with": [0, 6, 11]},
-                    {"bit_position": 0, "name": "Self-Use + TOU", "conflicts_with": [0, 6, 11], "requires": [1]},
-                    {"bit_position": 2, "name": "Off-Grid Operation", "conflicts_with": [0, 1, 2]},
-                    {"bit_position": 6, "name": "Feed-in Priority", "conflicts_with": [0, 6, 11]},
-                    {"bit_position": 6, "name": "Feed-in + TOU", "conflicts_with": [0, 6, 11], "requires": [1]},
-                    {"bit_position": 11, "name": "Peak Shaving", "conflicts_with": [0, 4, 6, 11]},
+                    {"bit_position": 0, "name": "Self-Use", "conflicts_with": STORAGE_MODE_BITS},
+                    {"bit_position": 0, "name": "Self-Use + TOU", "conflicts_with": STORAGE_MODE_BITS, "requires": [1], "tou_v1": True},
+                    {"bit_position": 0, "name": "Self-Use + Reserve/Backup", "conflicts_with": STORAGE_MODE_BITS, "requires": [4]},
+                    {"bit_position": 0, "name": "Self-Use + TOU + Reserve/Backup", "conflicts_with": STORAGE_MODE_BITS, "requires": [1, 4], "tou_v1": True},
+                    {"bit_position": 6, "name": "Feed-in Priority", "conflicts_with": STORAGE_MODE_BITS},
+                    {"bit_position": 6, "name": "Feed-in Priority + TOU", "conflicts_with": STORAGE_MODE_BITS, "requires": [1], "tou_v1": True},
+                    {"bit_position": 6, "name": "Feed-in Priority + Reserve/Backup", "conflicts_with": STORAGE_MODE_BITS, "requires": [4]},
+                    {
+                        "bit_position": 6,
+                        "name": "Feed-in Priority + TOU + Reserve/Backup",
+                        "conflicts_with": STORAGE_MODE_BITS,
+                        "requires": [1, 4],
+                        "tou_v1": True,
+                    },
+                    {"bit_position": 2, "name": "Off-Grid Operation", "conflicts_with": STORAGE_MODE_BITS},
+                    {"bit_position": 11, "name": "Peak Shaving", "conflicts_with": STORAGE_MODE_BITS},
                 ],
             },
         ]

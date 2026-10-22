@@ -1,6 +1,10 @@
 {
   "domain": "hh_modbus_control",
   "name": "HH Modbus Control",
+  "after_dependencies": [
+    "esphome",
+    "usb"
+  ],
   "codeowners": ["@ZaviiNet"],
   "config_flow": true,
   "dependencies": [],
@@ -9,6 +13,9 @@
   "iot_class": "local_polling",
   "issue_tracker": "",
   "quality_scale": "silver",
-  "requirements": ["pymodbus>=3.11.1"],
-  "version": "1.0.0"
+  "requirements": [
+    "modbus-connection[tmodbus]>=4.12.3",
+    "pymodbus>=3.11.1"
+  ],
+  "version": "1.1.0"
 }

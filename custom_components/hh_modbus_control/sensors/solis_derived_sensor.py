@@ -20,6 +20,10 @@ try:
 except ImportError:
     STATUS_MAPPING = {}
 
+FLEXIBLE_EXPORT_OFF = "Off"
+FLEXIBLE_EXPORT_ACTIVE = "Active"
+FLEXIBLE_EXPORT_BLOCKED = "Export Blocked"
+
 
 class SolisDerivedSensor(RestoreSensor, SensorEntity):
 
@@ -37,8 +41,12 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
         self._unit_of_measurement = sensor.unit_of_measurement
         self._attr_device_class = sensor.device_class
         self._attr_state_class = sensor.state_class
+        # Mirror SolisSensor: carry the diagnostic/config entity_category through so
+        # derived sensors get categorised like their base sensors (not left uncategorised).
+        self._attr_entity_category = sensor.entity_category
         self._attr_native_unit_of_measurement = sensor.unit_of_measurement
         self._attr_available = not sensor.hidden
+        self._attr_entity_registry_enabled_default = sensor.enabled and not sensor.hidden
 
         self.is_added_to_hass = False
         self._state = None
@@ -48,10 +56,12 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
         await super().async_added_to_hass()
         state = await self.async_get_last_sensor_data()
         if state:
-            if self.base_sensor.device_class != SensorDeviceClass.TIMESTAMP:
-                self._attr_native_value = state.native_value
-            else:
-                self._attr_native_value = datetime.now(UTC)
+            value = state.native_value
+            # Restore the stored timestamp, never "now": stamping the restart time
+            # made Last Clock Adjustment report RTC writes that never happened (#516).
+            if self.base_sensor.device_class == SensorDeviceClass.TIMESTAMP and not isinstance(value, datetime):
+                value = None
+            self._attr_native_value = value
         self.is_added_to_hass = True
 
         for reg in set(self._register):
@@ -83,6 +93,9 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
                 is_adjusted = clock_drift_test(
                     self.hass,
                     self.base_sensor.controller,
+                    self._received_values[33022],
+                    self._received_values[33023],
+                    self._received_values[33024],
                     self._received_values[33025],
                     self._received_values[33026],
                     self._received_values[33027],
@@ -105,9 +118,10 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
 
             new_value = self.base_sensor.get_value
 
-            if 33095 in self._register and STATUS_MAPPING:
-                new_value = round(self.base_sensor.get_value)
-                new_value = STATUS_MAPPING.get(new_value, "Unknown")
+            if 33095 in self._register:
+                code = round(self.base_sensor.get_value)
+                # Preserve the raw hex code for unmapped faults (matches SolisCloud alarm codes).
+                new_value = STATUS_MAPPING.get(code, f"Unknown (0x{code:04X})")
 
             if 33049 in self._register or 33051 in self._register or 33053 in self._register or 33055 in self._register:
                 r1_value = self._received_values[self._register[0]] * self.base_sensor.multiplier
@@ -127,27 +141,95 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
                 else:
                     new_value = round(active_power / ((active_power**2 + reactive_power**2) ** 0.5), 3)
 
+            if 33135 in self._register and len(self._register) == 4:
+                registers = self._register.copy()
+                self._register = registers[:2]
+
+                p_value = self.base_sensor.convert_value([self._received_values[reg] for reg in filtered_registers])
+                d_w_value = registers[3]
+                d_value = self._received_values[registers[2]]
+
+                self._register = registers
+
+                if str(d_value) == str(d_w_value):
+                    new_value = round(p_value * 10)
+                else:
+                    new_value = 0
+
+            if 33135 in self._register and len(self._register) == 3:
+                registers = self._register.copy()
+                self._register = registers[:2]
+
+                p_value = self.base_sensor.convert_value([self._received_values[reg] for reg in filtered_registers])
+                d_value = self._received_values[registers[2]]
+
+                self._register = registers
+
+                # 0 indicated charging, 1 indicated discharging
+                if str(d_value) == str(0):
+                    new_value = round(p_value * 10) * -1
+                else:
+                    new_value = round(p_value * 10)
+
+            if 33263 in self._register and len(self._register) == 2:
+                new_value = new_value * -1
+
+            if 33263 in self._register and len(self._register) == 3:
+                # Meter total active power is positive when exporting; flag 0 = export, 1 = import.
+                meter_power = self.base_sensor.convert_value([self._received_values[33263], self._received_values[33264]])
+                if meter_power is not None:
+                    new_value = max(meter_power if self._register[2] == 0 else -meter_power, 0)
+
             if 33175 in self._register or 33171 in self._register:
                 to_grid = self._received_values[self._register[0]] * self.base_sensor.multiplier
                 from_grid = self._received_values[self._register[1]] * self.base_sensor.multiplier
                 new_value = from_grid - to_grid
 
+            if 43292 in self._register:
+                # 0x00AA = Flexible Export on: export follows the 43291 limit instead of 43074.
+                switch_value = int(self._received_values[43292])
+                export_limit = int(self._received_values[43291])
+                if switch_value != 0xAA:
+                    new_value = FLEXIBLE_EXPORT_OFF
+                elif export_limit == 0:
+                    new_value = FLEXIBLE_EXPORT_BLOCKED
+                else:
+                    new_value = FLEXIBLE_EXPORT_ACTIVE
+
+            # set after
             if 35000 in self._register:
                 protocol_version, model_description = decode_inverter_model(new_value)
                 self.base_sensor.controller._sw_version = protocol_version
                 new_value = model_description + f"(Protocol {protocol_version})"
+                self._update_device_sw_version(protocol_version)
 
             if isinstance(new_value, (numbers.Number, decimal.Decimal, fractions.Fraction)) or isinstance(new_value, str):
                 self._attr_available = True
                 self._attr_native_value = new_value
                 self._state = new_value
-                self.schedule_update_ha_state()
-
-            if new_value is not None:
-                self._attr_native_value = new_value
-                self.schedule_update_ha_state()
+                self.schedule_update_ha_state()  # single update — no redundant re-schedule
 
             self._received_values.clear()
+
+    def _update_device_sw_version(self, protocol_version) -> None:
+        """Push the decoded protocol version into the device registry.
+
+        device_info is only read when entities register, at which point the
+        35000 register hasn't been polled yet — sw_version would stay "N/A"
+        forever without this.
+        """
+        import homeassistant.helpers.device_registry as dr
+
+        from custom_components.hh_modbus_control.const import DOMAIN
+
+        serial = self.base_sensor.controller.device_serial_number
+        if not serial:
+            return
+        dev_reg = dr.async_get(self.hass)
+        device = next(iter(dev_reg.async_get_devices(identifiers={(DOMAIN, serial)})), None)
+        sw_version = f"Protocol {protocol_version}"
+        if device and device.sw_version != sw_version:
+            dev_reg.async_update_device(device.id, sw_version=sw_version)
 
     @property
     def device_info(self):

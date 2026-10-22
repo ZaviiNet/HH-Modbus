@@ -17,11 +17,9 @@ Gain conventions (from upstream):
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     PERCENTAGE,
-    UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfPower,
     UnitOfReactivePower,
-    UnitOfTemperature,
     UnitOfTime,
 )
 

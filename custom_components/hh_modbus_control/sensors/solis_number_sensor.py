@@ -5,7 +5,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from custom_components.hh_modbus_control.const import CONTROLLER, REGISTER, SLAVE, VALUE
-from custom_components.hh_modbus_control.helpers import cache_get, is_correct_controller, is_number, register_update_signal
+from custom_components.hh_modbus_control.helpers import is_correct_controller, register_update_signal
 from custom_components.hh_modbus_control.sensors.solis_base_sensor import SolisBaseSensor
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,14 +37,21 @@ class SolisNumberEntity(RestoreNumber, NumberEntity):
         self._attr_native_value = sensor.default
         self._attr_mode = NumberMode.AUTO
         self._attr_native_min_value = sensor.min_value
+        # Static by design: a declared max or the protocol ceiling, never a live device
+        # limit. HA rejects set_value above this, so a moving bound meant intermittent
+        # out_of_range failures and states above their own max (#464, #467). The live
+        # limit is advisory — see extra_state_attributes.
         self._attr_native_max_value = sensor.max_value
         self._attr_native_step = sensor.step
         self._attr_step = sensor.step
         self._attr_should_poll = False
-        self._attr_entity_registry_enabled_default = sensor.enabled
+        self._attr_entity_registry_enabled_default = sensor.enabled and getattr(sensor, "registry_enabled", True) is not False
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # Restore the *value* only. Restoring bounds from a snapshot is the same trap
+        # as deriving them live (#464/#467): a stale or momentary min/max/step comes
+        # back as a hard limit HA then enforces on writes.
         state = await self.async_get_last_number_data()
         if state:
             self._attr_native_value = state.native_value
@@ -57,8 +64,45 @@ class SolisNumberEntity(RestoreNumber, NumberEntity):
                     self.handle_modbus_update,
                 )
             )
+
+        # Battery-current setpoints carry an advisory limit from BMS/inverter registers
+        # that this entity doesn't otherwise read; follow them so the device_limit
+        # attribute refreshes when either reports a new value.
+        for register in set(getattr(self.base_sensor, "device_limit_registers", ())):
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self._hass,
+                    register_update_signal(self.base_sensor.controller, register),
+                    self.handle_device_limit_update,
+                )
+            )
+
         if not self.base_sensor.enabled:
             self._attr_available = False
+
+    @property
+    def extra_state_attributes(self):
+        """Surface the live device limit next to the setpoint, without enforcing it.
+
+        Keeps "what may be configured" (the native min/max) and "what the device can
+        do right now" as the two different things they are (#464, #467): dashboards
+        and automations can read the limit here, while writes above it stay valid —
+        the device enforces its own limit at runtime.
+        """
+        source = self.base_sensor.device_limit_source
+        if source is None:
+            return None
+        return {
+            "device_limit": self.base_sensor.device_limit,
+            "device_limit_source": source,
+        }
+
+    @callback
+    def handle_device_limit_update(self, data):
+        """The BMS reported a new current limit — refresh the advisory attribute."""
+        if not is_correct_controller(self.base_sensor.controller, str(data.get(CONTROLLER)), int(data.get(SLAVE))):
+            return
+        self.schedule_update_ha_state()
 
     @callback
     def handle_modbus_update(self, data):
@@ -91,6 +135,20 @@ class SolisNumberEntity(RestoreNumber, NumberEntity):
             return
         if self._write_register is None:
             return
+
+        # Advisory only — warn, never clamp or reject. Clamping would corrupt scheduled
+        # TOU config written while the BMS is derated (#467) and recreate the ratchet on
+        # firmware whose mirror echoes the setpoint (#464); the device enforces its real
+        # limit itself. abs(): signed dispatch registers are symmetric about zero.
+        limit = getattr(self.base_sensor, "device_limit", None)
+        if isinstance(limit, (int, float)) and not isinstance(limit, bool) and abs(value) > limit:
+            _LOGGER.warning(
+                "%s: requested %s exceeds the device's currently reported limit of %s (%s); writing anyway — the device enforces its own limit",
+                self._attr_name,
+                value,
+                limit,
+                self.base_sensor.device_limit_source,
+            )
 
         register_value = round(value / self._multiplier)
         if self.base_sensor.data_type == "S16":
