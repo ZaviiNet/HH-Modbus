@@ -3,7 +3,6 @@ import logging
 from datetime import UTC, datetime
 
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.template import is_number
 from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
 
 from custom_components.solis_modbus.client_manager import ModbusClientManager
@@ -18,7 +17,7 @@ from custom_components.solis_modbus.const import (
 )
 from custom_components.solis_modbus.data.enums import PollSpeed
 from custom_components.solis_modbus.data.solis_config import InverterConfig
-from custom_components.solis_modbus.helpers import cache_save, notify_register_update
+from custom_components.solis_modbus.helpers import cache_save, is_number, notify_register_update
 from custom_components.solis_modbus.sensors.solis_base_sensor import SolisSensorGroup
 from custom_components.solis_modbus.sensors.solis_derived_sensor import SolisDerivedSensor
 

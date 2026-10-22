@@ -1,0 +1,47 @@
+# HH Modbus Inverter Simulator — docker-compose
+#
+# Usage (from the simulator/ directory):
+#   docker-compose up                       # default: Solis on port 5020
+#   BRAND=givenergy docker-compose up       # GivEnergy (default port 8899 → mapped to 8899)
+#   BRAND=sunsynk MODBUS_PORT=5021 docker-compose up
+#
+# The Web UI is always enabled and reachable at http://localhost:8080
+# (or the WEB_UI_PORT you choose).
+#
+# All environment variables have defaults and can be overridden inline or
+# via a .env file placed next to this docker-compose.yml.
+
+services:
+  inverter-simulator:
+    build:
+      # Build context is the repo root (one level up) so that the
+      # custom_components/ directory is available to the Dockerfile COPY step.
+      context: ..
+      dockerfile: simulator/Dockerfile
+    image: hh-modbus-simulator
+
+    environment:
+      # Inverter brand to simulate.
+      # Choices: solis, sunsynk, deye, givenergy, sigenergy, solaredge, skyline, duracell
+      BRAND: ${BRAND:-solis}
+
+      # Modbus TCP port the simulator listens on *inside* the container.
+      # The host-side mapping is set in the ports section below.
+      MODBUS_PORT: ${MODBUS_PORT:-5020}
+
+      # Modbus slave / device ID (default: 1)
+      SLAVE: ${SLAVE:-1}
+
+      # Web UI HTTP port inside the container
+      WEB_UI_PORT: ${WEB_UI_PORT:-8080}
+
+      # Python log level: DEBUG | INFO | WARNING | ERROR
+      LOG_LEVEL: ${LOG_LEVEL:-WARNING}
+
+    ports:
+      # Modbus TCP — host:container
+      - "${MODBUS_PORT:-5020}:${MODBUS_PORT:-5020}"
+      # Web UI
+      - "${WEB_UI_PORT:-8080}:${WEB_UI_PORT:-8080}"
+
+    restart: unless-stopped

@@ -1,4 +1,5 @@
 import logging
+import math
 import struct
 from datetime import datetime
 
@@ -231,3 +232,18 @@ def notify_register_update(hass: HomeAssistant, controller, register: int, value
         SLAVE: int(controller.device_id),
     }
     async_dispatcher_send(hass, register_update_signal(controller, register), payload)
+
+
+def is_number(value) -> bool:
+    """Return True if value can be interpreted as a finite number.
+
+    Local replacement for ``homeassistant.helpers.template.is_number``, which Home
+    Assistant removed from the template helper namespace (the logic now lives in the
+    internal template type-cast extension). Keeping our own copy decouples the
+    integration from that private API.
+    """
+    try:
+        fvalue = float(value)
+    except (ValueError, TypeError):
+        return False
+    return math.isfinite(fvalue)
