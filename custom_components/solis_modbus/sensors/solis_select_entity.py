@@ -4,7 +4,8 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from custom_components.solis_modbus import ModbusController
-from custom_components.solis_modbus.helpers import cache_get, cache_save, unique_id_generator
+from custom_components.solis_modbus.const import TOU_VERSION_REGISTER, TOU_VERSION_V2
+from custom_components.solis_modbus.helpers import cache_get, cache_save, get_bit_bool, set_bit, tou_v2_active, unique_id_generator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -15,12 +16,27 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
         self._modbus_controller: ModbusController = modbus_controller
         self._register = entity_definition["register"]
         self._attr_name = entity_definition["name"]
+        self._attr_has_entity_name = True
         self._attr_unique_id = unique_id_generator(modbus_controller, entity_definition["register"], "select")
 
         self._attr_options = [e["name"] for e in entity_definition["entities"]]
         self._attr_options_raw = entity_definition["entities"]
         self._companion_writes = entity_definition.get("companion_writes") or []
+        self._has_tou_v1 = any(e.get("tou_v1") for e in self._attr_options_raw)
         self._current_option = None
+
+    def _hide_tou_v1(self) -> bool:
+        """V2 firmware clears the V1 TOU bit right after it is written (issue #475)."""
+        return self._has_tou_v1 and tou_v2_active(self._hass, self._modbus_controller)
+
+    def _available_options_raw(self) -> list[dict]:
+        if self._hide_tou_v1():
+            return [e for e in self._attr_options_raw if not e.get("tou_v1")]
+        return self._attr_options_raw
+
+    @property
+    def options(self) -> list[str]:
+        return [e["name"] for e in self._available_options_raw()]
 
     @property
     def current_option(self) -> str | None:
@@ -28,26 +44,56 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
         if reg_cache is None:
             return
 
+        if self._hide_tou_v1():
+            # Ignore the dead V1 bit, e.g. the brief echo of a write before the
+            # firmware clears it, so the state stays on a selectable option.
+            reg_cache = set_bit(reg_cache, 1, False)
+
         # Sort by number of requires descending to prioritize more specific matches
-        sorted_options = sorted(self._attr_options_raw, key=lambda e: len(e.get("requires", [])) if "requires" in e else 0, reverse=True)
+        sorted_options = sorted(self._available_options_raw(), key=lambda e: len(e.get("requires", [])) if "requires" in e else 0, reverse=True)
 
-        for e in sorted_options:
-            on_value = e.get("on_value")
-            bit_position = e.get("bit_position")
-            requires = e.get("requires")
+        # Two passes: strict first (an option only matches when its conflicting bits,
+        # other than its own/required ones, are clear — makes resolution independent
+        # of file order, e.g. 43110=35 must not read as plain "Self-Use"), then a
+        # lenient pass so degenerate leftover combos (e.g. Peak Shaving with a stray
+        # TOU bit written by older versions) still resolve to the nearest option.
+        for strict in (True, False):
+            for e in sorted_options:
+                on_value = e.get("on_value")
+                bit_position = e.get("bit_position")
+                requires = e.get("requires") or []
 
-            if on_value is not None:
-                if reg_cache == on_value:
-                    return e["name"]
-            elif bit_position is not None:
-                if get_bit_bool(reg_cache, bit_position):
-                    if requires:
-                        if all(get_bit_bool(reg_cache, rbit) for rbit in requires):
-                            return e["name"]
-                    else:
+                if on_value is not None:
+                    if reg_cache == on_value:
                         return e["name"]
+                elif bit_position is not None:
+                    if not get_bit_bool(reg_cache, bit_position):
+                        continue
+                    if not all(get_bit_bool(reg_cache, rbit) for rbit in requires):
+                        continue
+                    if strict:
+                        own_bits = {bit_position, *requires}
+                        conflicts = [cbit for cbit in (e.get("conflicts_with") or []) if cbit not in own_bits]
+                        if any(get_bit_bool(reg_cache, cbit) for cbit in conflicts):
+                            continue
+                    return e["name"]
 
         return None
+
+    @property
+    def extra_state_attributes(self):
+        """Expose the raw register so unmatched bit combos are debuggable."""
+        reg_cache = cache_get(self._hass, self._modbus_controller, self._register)
+        if reg_cache is None:
+            return None
+        attributes = {
+            "raw_value": reg_cache,
+            "set_bits": [bit for bit in range(16) if (int(reg_cache) >> bit) & 1],
+        }
+        if self._has_tou_v1:
+            version = cache_get(self._hass, self._modbus_controller, TOU_VERSION_REGISTER)
+            attributes["tou_version"] = "unknown" if version is None else ("V2" if version == TOU_VERSION_V2 else "V1")
+        return attributes
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
@@ -58,6 +104,12 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
             requires = e.get("requires", None)
 
             if e["name"] == option:
+                if e.get("tou_v1") and self._hide_tou_v1():
+                    _LOGGER.warning(
+                        f"({self._modbus_controller.host}) '{option}' not written: this inverter uses V2 time-of-use "
+                        f"(33289 = 0xAA55), which clears the V1 TOU bit. Use the Grid Time of Use period switches instead."
+                    )
+                    return
                 if on_value is not None:
                     await self._modbus_controller.async_write_holding_register(self._register, on_value)
                     await self._write_companions()
@@ -65,7 +117,7 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
                     self.async_write_ha_state()
                     break
                 else:
-                    self.set_register_bit(on_value, bit_position, conflicts_with, requires)
+                    await self.set_register_bit(on_value, bit_position, conflicts_with, requires)
 
     @property
     def device_info(self):
@@ -90,56 +142,48 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
                 continue
             await self._modbus_controller.async_write_holding_register(companion_register, cached)
 
-    def set_register_bit(self, on_value, bit_position, conflicts_with, requires):
+    async def set_register_bit(self, on_value, bit_position, conflicts_with, requires):
         """Set or clear a specific bit in the Modbus register."""
         controller = self._modbus_controller
         current_register_value: int = cache_get(self._hass, self._modbus_controller, self._register)
+
+        if current_register_value is None and bit_position is not None:
+            # A read-modify-write from an empty cache (e.g. right after a reload,
+            # before this register's group has been polled) would start from 0 and
+            # clear every other bit in the register (issue #402). Read the live
+            # value from the inverter first.
+            registers = await controller.async_read_holding_register(self._register, 1)
+            if not registers:
+                _LOGGER.warning(
+                    f"({controller.host}) Cannot set bit {bit_position} of register {self._register}: "
+                    f"no cached value and live read failed; skipping write to avoid clearing other bits"
+                )
+                return
+            current_register_value = registers[0]
+            cache_save(self._hass, controller, self._register, current_register_value)
+
+        new_register_value = current_register_value
 
         if bit_position is not None:
             # Clear conflicts
             if conflicts_with:
                 for wbit in conflicts_with:
-                    current_register_value = set_bit(current_register_value, wbit, False)
+                    new_register_value = set_bit(new_register_value, wbit, False)
 
             # Set dependencies
             if requires:
                 for rbit in requires:
-                    current_register_value = set_bit(current_register_value, rbit, True)
+                    new_register_value = set_bit(new_register_value, rbit, True)
 
-            new_register_value: int = set_bit(current_register_value, bit_position, True)
+            new_register_value = set_bit(new_register_value, bit_position, True)
 
         else:
-            new_register_value: int = on_value
+            new_register_value = on_value
 
         _LOGGER.debug(f"Attempting bit {bit_position} to {True} in register {self._register}. New value for register {new_register_value}")
-        # we only want to write when values has changed. After, we read the register again to make sure it applied.
+        # Compare against the value the device currently holds (not a partially
+        # mutated working copy) so clearing a conflict bit alone still triggers a write.
         if current_register_value != new_register_value and controller.connected():
-            self._hass.create_task(controller.async_write_holding_register(self._register, new_register_value))
+            await controller.async_write_holding_register(self._register, new_register_value)
             cache_save(self._hass, self._modbus_controller, self._register, new_register_value)
         self._attr_available = True
-
-
-def get_bit_bool(modbus_value, bit_position):
-    """
-    Decode Modbus value to boolean state for the specified bit position.
-
-    Parameters:
-    - modbus_value: The Modbus value to decode.
-    - bit_position: The position of the bit to extract (0-based).
-
-    Returns:
-    - True if the bit is ON, False if the bit is OFF.
-    """
-    # Check if the bit is ON by shifting 1 to the specified position and performing bitwise AND
-    return (modbus_value >> bit_position) & 1 == 1
-
-
-def set_bit(value, bit_position, new_bit_value):
-    """Set or clear a specific bit in an integer value."""
-    if value is None:
-        value = 0
-    mask = 1 << bit_position
-    value &= ~mask  # Clear the bit
-    if new_bit_value:
-        value |= mask  # Set the bit
-    return round(value)

@@ -4,17 +4,22 @@ import re
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.config_entries import OptionsFlowWithConfigEntry
+from homeassistant.config_entries import OptionsFlow
+from pymodbus.client import AsyncModbusSerialClient, AsyncModbusTcpClient
 
-from . import ModbusController
 from .const import (
     CONF_BAUDRATE,
     CONF_BYTESIZE,
+    CONF_CLOCK_SYNC,
     CONF_CONNECTION_TYPE,
+    CONF_EXTREME_INCLUDE_BATTERY,
+    CONF_EXTREME_INCLUDE_SMART_PORT,
     CONF_INVERTER_SERIAL,
     CONF_PARITY,
+    CONF_POLL_PROFILE,
     CONF_SERIAL_PORT,
     CONF_STOPBITS,
+    CONF_SUPPRESS_NIGHT_OFFLINE_ISSUE,
     CONN_TYPE_SERIAL,
     CONN_TYPE_TCP,
     DEFAULT_BAUDRATE,
@@ -22,9 +27,14 @@ from .const import (
     DEFAULT_PARITY,
     DEFAULT_STOPBITS,
     DOMAIN,
+    POLL_INTERVAL_FAST_MIN,
+    POLL_INTERVAL_FAST_MIN_EXTREME,
+    POLL_PROFILE_EXTREME,
+    POLL_PROFILE_FULL,
+    POLL_PROFILES,
 )
-from .data.enums import InverterType
 from .data.solis_config import CONNECTION_METHOD, SOLIS_INVERTERS, InverterConfig, inverter_options_from_config
+from .serial_proxy import SerialProxyClient, is_serial_proxy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,14 +47,44 @@ CONNECTION_TYPES = {CONN_TYPE_TCP: "TCP (WiFi Dongle)", CONN_TYPE_SERIAL: "Seria
 # Parity options
 PARITY_OPTIONS = {"N": "None", "E": "Even", "O": "Odd"}
 
+# HA 2026.5+ offers a picker of the serial ports it can see, with a manual-entry
+# option for socket:// or rfc2217:// gateways. Older versions get a text field.
+try:
+    from homeassistant.helpers.selector import SerialPortSelector
+except ImportError:  # HA < 2026.5
+    SERIAL_PORT_FIELD = {vol.Required(CONF_SERIAL_PORT, default="/dev/ttyUSB0"): str}
+else:
+    # No default: preselecting a port that may not exist hides the real ones.
+    SERIAL_PORT_FIELD = {vol.Required(CONF_SERIAL_PORT): SerialPortSelector()}
+
+# pymodbus opens serial ports with pyserial's serial_for_url, which takes device
+# paths and these URL schemes; ESPHome serial proxies go through SerialProxyClient.
+# The picker can list other ports neither can open, and offers no filter.
+PYSERIAL_URL_SCHEMES = ("alt", "cp2110", "hwgrep", "loop", "rfc2217", "socket", "spy")
+
+
+def _is_supported_serial_port(port: str) -> bool:
+    """Return whether this serial port path or URL can be opened."""
+    scheme, separator, _ = port.partition("://")
+    return not separator or scheme.lower() in PYSERIAL_URL_SCHEMES or is_serial_proxy(port)
+
+
 # Base schema with common fields (for both TCP and Serial)
 BASE_CONFIG_SCHEMA = {
     vol.Required(CONF_CONNECTION_TYPE, default=CONN_TYPE_TCP): vol.In(CONNECTION_TYPES),
     vol.Required(CONF_INVERTER_SERIAL): str,
     vol.Required("slave", default=1): int,
-    vol.Optional("poll_interval_fast", default=10): vol.All(int, vol.Range(min=10)),
+    # Floor is the extreme-profile minimum; _validate_poll_interval enforces the
+    # stricter default floor, which voluptuous can't do since the profile is
+    # chosen on this same form.
+    vol.Optional("poll_interval_fast", default=POLL_INTERVAL_FAST_MIN): vol.All(int, vol.Range(min=POLL_INTERVAL_FAST_MIN_EXTREME)),
     vol.Optional("poll_interval_normal", default=15): vol.All(int, vol.Range(min=15)),
     vol.Optional("poll_interval_slow", default=30): vol.All(int, vol.Range(min=30)),
+    vol.Required(CONF_POLL_PROFILE, default=POLL_PROFILE_FULL): vol.In(POLL_PROFILES),
+    vol.Required(CONF_EXTREME_INCLUDE_BATTERY, default=False): bool,
+    vol.Required(CONF_EXTREME_INCLUDE_SMART_PORT, default=False): bool,
+    vol.Required(CONF_SUPPRESS_NIGHT_OFFLINE_ISSUE, default=False): bool,
+    vol.Required(CONF_CLOCK_SYNC, default=True): bool,
     vol.Required("model", default=list(SOLIS_MODELS.keys())[0]): vol.In(SOLIS_MODELS),
     # Boolean options (Yes/No toggle)
     vol.Required("has_v2", default=True): bool,
@@ -54,22 +94,8 @@ BASE_CONFIG_SCHEMA = {
     vol.Required("has_battery", default=True): bool,
     vol.Required("has_hv_battery", default=False): bool,
     vol.Required("has_generator", default=True): bool,
-}
-
-# Combined schema that accepts both TCP and Serial fields (all optional except connection_type)
-# This allows the form to accept either type of connection
-COMBINED_CONFIG_SCHEMA = {
-    **BASE_CONFIG_SCHEMA,
-    # TCP fields (optional)
-    vol.Optional("host", default=""): str,
-    vol.Optional("port", default=502): int,
-    vol.Optional("connection", default=list(CONNECTION_METHOD.keys())[0]): vol.In(CONNECTION_METHOD),
-    # Serial fields (optional)
-    vol.Optional(CONF_SERIAL_PORT, default="/dev/ttyUSB0"): str,
-    vol.Optional(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.In([9600, 19200, 38400, 57600, 115200]),
-    vol.Optional(CONF_BYTESIZE, default=DEFAULT_BYTESIZE): vol.In([7, 8]),
-    vol.Optional(CONF_PARITY, default=DEFAULT_PARITY): vol.In(PARITY_OPTIONS),
-    vol.Optional(CONF_STOPBITS, default=DEFAULT_STOPBITS): vol.In([1, 2]),
+    vol.Required("has_dual_meter", default=False): bool,
+    vol.Required("has_epm", default=True): bool,
 }
 
 # TCP-specific fields (includes WiFi dongle type)
@@ -83,7 +109,7 @@ TCP_CONFIG_SCHEMA = {
 # Serial-specific fields (no WiFi dongle type needed)
 SERIAL_CONFIG_SCHEMA = {
     **BASE_CONFIG_SCHEMA,
-    vol.Required(CONF_SERIAL_PORT, default="/dev/ttyUSB0"): str,
+    **SERIAL_PORT_FIELD,
     vol.Required(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): vol.In([9600, 19200, 38400, 57600, 115200]),
     vol.Required(CONF_BYTESIZE, default=DEFAULT_BYTESIZE): vol.In([7, 8]),
     vol.Required(CONF_PARITY, default=DEFAULT_PARITY): vol.In(PARITY_OPTIONS),
@@ -92,9 +118,14 @@ SERIAL_CONFIG_SCHEMA = {
 
 OPTIONS_SCHEMA = vol.Schema(
     {
-        vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=10)),
+        vol.Required("poll_interval_fast"): vol.All(int, vol.Range(min=POLL_INTERVAL_FAST_MIN_EXTREME)),
         vol.Required("poll_interval_normal"): vol.All(int, vol.Range(min=15)),
         vol.Required("poll_interval_slow"): vol.All(int, vol.Range(min=30)),
+        vol.Required(CONF_POLL_PROFILE, default=POLL_PROFILE_FULL): vol.In(POLL_PROFILES),
+        vol.Required(CONF_EXTREME_INCLUDE_BATTERY, default=False): bool,
+        vol.Required(CONF_EXTREME_INCLUDE_SMART_PORT, default=False): bool,
+        vol.Required(CONF_SUPPRESS_NIGHT_OFFLINE_ISSUE, default=False): bool,
+        vol.Required(CONF_CLOCK_SYNC, default=True): bool,
         vol.Required("model"): vol.In(SOLIS_MODELS),
         vol.Required("connection", default=list(CONNECTION_METHOD.keys())[0]): vol.In(CONNECTION_METHOD),
         # Boolean options (Yes/No toggle)
@@ -105,8 +136,51 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Required("has_battery", default=True): bool,
         vol.Required("has_hv_battery", default=False): bool,
         vol.Required("has_generator", default=True): bool,
+        vol.Required("has_dual_meter", default=False): bool,
+        vol.Required("has_epm", default=True): bool,
     }
 )
+
+
+def _validate_poll_interval(config: dict) -> str | None:
+    """Enforce the fast-poll floor that applies to the chosen profile.
+
+    The schemas only declare the extreme floor, because the profile is picked on
+    the same form and voluptuous can't vary a field's range by another field's
+    value. Returns an error key, or None when the interval is acceptable.
+    """
+    profile = config.get(CONF_POLL_PROFILE, POLL_PROFILE_FULL)
+    floor = POLL_INTERVAL_FAST_MIN_EXTREME if profile == POLL_PROFILE_EXTREME else POLL_INTERVAL_FAST_MIN
+    interval = config.get("poll_interval_fast")
+    if interval is not None and int(interval) < floor:
+        return "poll_interval_below_floor"
+    return None
+
+
+async def _probe_tcp_port(host: str, port: int, timeout: float = 5.0) -> tuple[bool, str | None]:
+    """Check that something is actually accepting TCP connections on host:port.
+
+    A plain socket open is far cheaper than a Modbus handshake and separates the two
+    failure modes cleanly: a refused/timed-out connect means nothing is listening,
+    whereas a successful connect that then fails the register probe means Modbus (or
+    the slave id) is the problem. Returns (reachable, reason).
+    """
+    writer = None
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+        return True, None
+    except TimeoutError:
+        return False, "timeout"
+    except OSError as e:
+        # ConnectionRefusedError, host unreachable, DNS failure — all OSError subclasses.
+        return False, type(e).__name__
+    finally:
+        if writer is not None:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:  # pragma: no cover - best-effort cleanup
+                pass
 
 
 def clean_identification(iden: str | None) -> str | None:
@@ -121,7 +195,7 @@ def clean_identification(iden: str | None) -> str | None:
 class ModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Modbus configuration flow."""
 
-    VERSION = 3
+    VERSION = 5
     MINOR_VERSION = 0
 
     def __init__(self):
@@ -185,17 +259,27 @@ class ModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # Update existing entry data with new input
             data = {**entry.data, **user_input}
+            serial = (data.get(CONF_INVERTER_SERIAL) or "").strip()
 
             # Require serial and model so the form always collects them
-            if not (data.get(CONF_INVERTER_SERIAL) or "").strip():
-                errors["base"] = "Inverter serial number is required."
+            if not serial:
+                errors["base"] = "serial_required"
             elif not data.get("model"):
-                errors["base"] = "Please select an inverter model."
+                errors["base"] = "model_required"
+            elif any(other.unique_id == serial and other.entry_id != entry.entry_id for other in self.hass.config_entries.async_entries(DOMAIN)):
+                # Another entry already manages this inverter
+                return self.async_abort(reason="already_configured")
+            elif interval_error := _validate_poll_interval(data):
+                errors["base"] = interval_error
             else:
-                valid, err_msg = await self._validate_config(data)
+                valid, err_key = await self._validate_config(data)
                 if valid:
-                    return self.async_update_reload_and_abort(entry, data=data)
-                errors["base"] = err_msg or "Cannot connect to Modbus device. Please check your configuration."
+                    # Strip reconfigured keys from options: setup merges
+                    # {**data, **options}, so stale option values would silently
+                    # shadow the freshly reconfigured data otherwise.
+                    new_options = {k: v for k, v in entry.options.items() if k not in user_input}
+                    return self.async_update_reload_and_abort(entry, data=data, options=new_options, unique_id=serial)
+                errors["base"] = err_key or "cannot_connect"
 
         # 1. Select the full schema (TCP or Serial) so reconfigure shows all fields
         conn_type = entry.data.get(CONF_CONNECTION_TYPE, CONN_TYPE_TCP)
@@ -219,9 +303,10 @@ class ModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_INVERTER_SERIAL] = str(data[CONF_INVERTER_SERIAL]).upper()
 
         # 2. Validate Connection
-        valid, err_msg = await self._validate_config(data)
+        interval_error = _validate_poll_interval(data)
+        valid, err_key = (False, interval_error) if interval_error else await self._validate_config(data)
         if not valid:
-            errors["base"] = err_msg or "Cannot connect to Modbus device. Please check your configuration."
+            errors["base"] = err_key or "cannot_connect"
 
             # Determine which schema to show again based on connection type
             if data.get(CONF_CONNECTION_TYPE) == CONN_TYPE_TCP:
@@ -240,84 +325,91 @@ class ModbusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(title=f"Solis: {data[CONF_INVERTER_SERIAL]}", data=data)
 
     async def _validate_config(self, user_input):
-        """Validate the configuration by trying to connect to the Modbus device.
-        Returns (True, None) on success, (False, error_message) on failure.
+        """Validate the configuration by probing the Modbus device.
+
+        Uses a throwaway pymodbus client on purpose: building a ModbusController
+        here would acquire the SHARED client from ModbusClientManager and the old
+        retry loop released it up to 5 times per validation — closing a running
+        entry's connection out from under it during reconfigure or when adding a
+        second inverter on the same datalogger.
+
+        Returns (True, None) on success, (False, error_key) on failure.
         """
         inverter_model = user_input.get("model")
         inverter_template: InverterConfig | None = next((inv for inv in SOLIS_INVERTERS if inv.model == inverter_model), None)
 
         if inverter_template is None:
             _LOGGER.warning("Invalid or unknown inverter model: %s", inverter_model)
-            return False, "Invalid or unknown inverter model. Please select a model from the list."
+            return False, "invalid_model"
 
         user_options = inverter_options_from_config(user_input, inverter_template)
         inverter_config = inverter_template.clone_with_options(user_options, user_input.get("connection", "S2_WL_ST"))
 
         conn_type = user_input.get(CONF_CONNECTION_TYPE, CONN_TYPE_SERIAL)
-
-        # Build ModbusController parameters based on connection type
-        controller_params = {
-            "hass": self.hass,
-            "device_id": user_input.get("slave", 1),
-            "identification": clean_identification(user_input.get("identification", None)),
-            "fast_poll": user_input.get("poll_interval_fast", 10),
-            "normal_poll": user_input.get("poll_interval_normal", 15),
-            "slow_poll": user_input.get("poll_interval_slow", 15),
-            "inverter_config": inverter_config,
-            "connection_type": conn_type,
-        }
+        device_id = user_input.get("slave", 1)
+        probe_register = inverter_config.probe_register
 
         if conn_type == CONN_TYPE_TCP:
-            controller_params["host"] = user_input["host"]
-            controller_params["port"] = user_input.get("port", 502)
+            host, port = user_input["host"], user_input.get("port", 502)
+            reachable, reason = await _probe_tcp_port(host, port)
+            if not reachable:
+                # Distinguish "nothing is listening on 502" from "Modbus itself failed".
+                # Recent Solis datalogger firmware closes the local TCP services while
+                # cloud upload keeps working, which otherwise surfaces as a generic
+                # "check your configuration" and sends people hunting the wrong problem
+                # (issue #432).
+                _LOGGER.error("TCP pre-probe of %s:%s failed (%s) — nothing is serving Modbus there", host, port, reason)
+                return False, "tcp_port_closed"
+            client = AsyncModbusTcpClient(host=host, port=port, timeout=5, retries=1)
         else:  # Serial
-            controller_params["serial_port"] = user_input[CONF_SERIAL_PORT]
-            controller_params["baudrate"] = user_input.get(CONF_BAUDRATE, DEFAULT_BAUDRATE)
-            controller_params["bytesize"] = user_input.get(CONF_BYTESIZE, DEFAULT_BYTESIZE)
-            controller_params["parity"] = user_input.get(CONF_PARITY, DEFAULT_PARITY)
-            controller_params["stopbits"] = user_input.get(CONF_STOPBITS, DEFAULT_STOPBITS)
+            if not _is_supported_serial_port(user_input[CONF_SERIAL_PORT]):
+                _LOGGER.error("Serial port %s cannot be opened", user_input[CONF_SERIAL_PORT])
+                return False, "serial_port_unsupported"
+            client_cls = SerialProxyClient if is_serial_proxy(user_input[CONF_SERIAL_PORT]) else AsyncModbusSerialClient
+            client = client_cls(
+                port=user_input[CONF_SERIAL_PORT],
+                baudrate=user_input.get(CONF_BAUDRATE, DEFAULT_BAUDRATE),
+                bytesize=user_input.get(CONF_BYTESIZE, DEFAULT_BYTESIZE),
+                parity=user_input.get(CONF_PARITY, DEFAULT_PARITY),
+                stopbits=user_input.get(CONF_STOPBITS, DEFAULT_STOPBITS),
+                timeout=5,
+                retries=1,
+            )
 
-        modbus_controller = ModbusController(**controller_params)
-
-        for attempt in range(5):
+        try:
+            for attempt in range(3):
+                try:
+                    await client.connect()
+                    if not client.connected:
+                        raise ConnectionError("Failed to connect")
+                    # Both client types take the target unit as `device_id` on the
+                    # request itself. Assigning `client.slave` did nothing on the
+                    # serial client, so the probe always read device 1 regardless
+                    # of the configured slave.
+                    result = await client.read_input_registers(address=probe_register, count=1, device_id=device_id)
+                    if result.isError():
+                        raise ConnectionError(f"Probe read of {probe_register} failed: {result}")
+                    return True, None
+                except Exception as e:
+                    _LOGGER.warning("Connection validation attempt %s/3 failed: %s", attempt + 1, e)
+                    if attempt < 2:
+                        await asyncio.sleep(1)
+        finally:
             try:
-                if not await modbus_controller.connect():
-                    raise ConnectionError("Failed to connect")
-                if inverter_config.type in [InverterType.GRID, InverterType.STRING]:
-                    await modbus_controller.async_read_input_register(3041, 1)
-                else:
-                    await modbus_controller.async_read_input_register(35000, 1)
+                client.close()
+            except Exception:  # noqa: BLE001 - best-effort cleanup of a throwaway client
+                pass
 
-                return True, None
-            except Exception as e:
-                _LOGGER.warning(f"Connection failed attempt {attempt + 1}/5: {str(e)}")
-                if attempt < 4:
-                    await asyncio.sleep(1)
-            finally:
-                modbus_controller.close_connection()
-
-        _LOGGER.error(f"Connection failed after 5 attempts: {str(controller_params)}")
-        return False, "Cannot connect to Modbus device. Please check your configuration."
-
-    def _get_user_schema(self, user_input=None):
-        """Return the appropriate schema based on connection type selection."""
-        if user_input and CONF_CONNECTION_TYPE in user_input:
-            conn_type = user_input[CONF_CONNECTION_TYPE]
-            if conn_type == CONN_TYPE_TCP:
-                return vol.Schema(TCP_CONFIG_SCHEMA)
-            else:
-                return vol.Schema(SERIAL_CONFIG_SCHEMA)
-
-        return vol.Schema(SERIAL_CONFIG_SCHEMA)
+        _LOGGER.error("Connection validation failed after 3 attempts (%s)", conn_type)
+        return False, "cannot_connect"
 
     @staticmethod
-    @config_entries.HANDLERS.register(DOMAIN)
     def async_get_options_flow(config_entry):
         """Return the options flow handler."""
-        return ModbusOptionsFlowHandler(config_entry)
+        return ModbusOptionsFlowHandler()
 
 
-class ModbusOptionsFlowHandler(OptionsFlowWithConfigEntry):
+class ModbusOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Modbus."""
 
     async def async_step_init(self, user_input=None):
@@ -326,7 +418,10 @@ class ModbusOptionsFlowHandler(OptionsFlowWithConfigEntry):
 
         if user_input is not None:
             merged = {**self.config_entry.options, **user_input}
-            return self.async_create_entry(title="", data=merged)
+            interval_error = _validate_poll_interval(merged)
+            if interval_error is None:
+                return self.async_create_entry(title="", data=merged)
+            errors["base"] = interval_error
 
         current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(

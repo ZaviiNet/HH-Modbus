@@ -1,0 +1,76 @@
+name: PR Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # Fork PRs: head_ref only exists on the contributor's repo, not upstream.
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Unique ID Tests
+        run: uv run pytest tests/test_unique_id_generator.py
+
+      - name: Run Migration Tests
+        run: uv run pytest tests/test_migration.py
+
+      - name: Run Sensor Drift Check
+        id: drift_check
+        continue-on-error: true
+        run: uv run pytest tests/test_sensor_drift.py
+
+      - name: Post Drift Report
+        if: steps.drift_check.outcome == 'failure'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: drift_report.md
+          header: drift-report
+
+      - name: Fail if drift detected
+        if: steps.drift_check.outcome == 'failure'
+        run: exit 1
+
+      - name: Update Sensor Baselines
+        if: steps.drift_check.outcome == 'success'
+        run: uv run python tests/generate_known_sensors.py
+
+      - name: Commit and Push Changes
+        if: |
+          steps.drift_check.outcome == 'success' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/known_sensors_*.json
+          # Check if there are changes
+          if ! git diff --cached --quiet; then
+            git commit -m "test: update known sensors baseline"
+            git push
+          else
+            echo "No changes to baseline."
+          fi

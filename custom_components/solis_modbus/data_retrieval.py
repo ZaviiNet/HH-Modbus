@@ -1,19 +1,23 @@
 import asyncio
 import logging
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import sun
 from homeassistant.helpers.event import async_track_time_interval
 
 from custom_components.solis_modbus.helpers import (
     cache_get,
     cache_save,
+    iter_controllers,
     mark_platform_entities_unavailable_for_base_sensors,
     notify_register_update,
 )
 
+from .const import CONN_TYPE_SERIAL, DOMAIN
 from .data.enums import PollSpeed
 from .modbus_controller import RECOVERABLE_REGISTER_READ_EXCEPTIONS, ModbusController
 from .sensors.solis_base_sensor import SolisSensorGroup, cluster_sensors_by_contiguous_registers
@@ -22,12 +26,41 @@ _LOGGER = logging.getLogger(__name__)
 
 _MAX_REGISTER_RECOVERY_DEPTH = 24
 
+# Raise a repair issue once the reconnect loop has failed this many times
+# (~the datalogger has been gone for a while, not a single blip).
+_ISSUE_AFTER_FAILURES = 5
+
+# With night suppression on, also treat this long before sunset / after sunrise
+# as night: inverters drop off at dusk and wake well after the sun is up.
+_NIGHT_GRACE = timedelta(hours=1)
+
+# How long a serial inverter must go unanswered from startup before we check
+# whether it answers at unit 1 instead of its configured slave ID.
+_SLAVE_PROBE_AFTER = timedelta(minutes=1)
+
 
 class DataRetrieval:
-    def __init__(self, hass: HomeAssistant, controller: ModbusController):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        controller: ModbusController,
+        entry_id: str | None = None,
+        suppress_night_issue: bool = False,
+    ):
         self._spike_counter = {}
         self.controller: ModbusController = controller
         self.hass = hass
+        self._entry_id = entry_id
+        # Fixed for this instance's lifetime: an options change reloads the entry.
+        self._suppress_night_issue = suppress_night_issue
+        # None = unknown (an issue may survive from before a restart), so the first
+        # night-time pass still clears it; afterwards we skip redundant deletes.
+        self._issue_raised: bool | None = None
+        # Set once the slave ID check is settled (see _check_serial_slave_id).
+        self._slave_id_checked = False
+        # Set once its issue is raised: stop probing, but keep checking whether to clear it.
+        self._slave_id_issue_raised = False
+        self._polling_since: float | None = None
         self.poll_lock = asyncio.Lock()
         self.connection_check = False
         self.first_poll = True
@@ -40,14 +73,24 @@ class DataRetrieval:
 
         self._unsub_listeners = []
         self._startup_unsub = None  # Store startup listener separately
+        self._write_task = None  # process_write_queue task, cancelled on unload
+        self._poll_task = None  # poll_controller task, cancelled on unload
+        self._stopping = False  # set on async_stop so in-flight reconnect loops exit
 
         if self.hass.is_running:
-            self.hass.create_task(self.poll_controller())
+            self._poll_task = self.hass.async_create_task(self.poll_controller())
         else:
             # Store the unsub function separately so we can manage its lifecycle
             self._startup_unsub = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, self.poll_controller)
 
+    def _can_poll(self) -> bool:
+        """True while a poll batch may keep reading."""
+        return not self._stopping and self.controller.enabled and self.controller.connected()
+
     async def _read_register_block_with_exception(self, start_register: int, count: int, is_holding: bool) -> tuple[list[int] | None, int | None]:
+        # The controller's read wrappers reconnect; only check_connection may.
+        if not self._can_poll():
+            return None, None
         if is_holding:
             return await self.controller.async_read_holding_registers_with_exception(start_register, count)
         return await self.controller.async_read_input_registers_with_exception(start_register, count)
@@ -87,7 +130,7 @@ class DataRetrieval:
         start_register = sensor_group.start_register
         for i, value in enumerate(values):
             reg = start_register + i
-            _LOGGER.debug(f"block {start_register}, register {reg} has value {value}")
+            _LOGGER.debug("block %s, register %s has value %s", start_register, reg, value)
             corrected_value = self.spike_filtering(reg, value)
             cache_save(self.hass, self.controller, reg, corrected_value)
             notify_register_update(self.hass, self.controller, reg, corrected_value)
@@ -165,7 +208,15 @@ class DataRetrieval:
         return results if results else None
 
     async def async_stop(self):
-        """Cancel all listeners."""
+        """Cancel all listeners and background tasks."""
+        # Signal any in-flight reconnect loop to exit (it may be mid-backoff while
+        # the datalogger is offline — otherwise it keeps spinning after unload).
+        self._stopping = True
+        self._update_connection_issue(False)
+        if self._entry_id is not None:
+            # A reload re-raises it if it still applies.
+            ir.async_delete_issue(self.hass, DOMAIN, f"serial_slave_id_{self._entry_id}")
+
         # Clean up the startup listener only if it hasn't fired yet
         if self._startup_unsub:
             self._startup_unsub()
@@ -175,6 +226,122 @@ class DataRetrieval:
             unsub()
         self._unsub_listeners = []
         self.connection_check = False  # Stop connection loop logic if any
+
+        # Cancel the background tasks so they don't leak on reload. Cancel _poll_task
+        # FIRST: poll_controller() creates _write_task as its last step, so stopping
+        # poll first prevents it spawning a fresh write task after we've cancelled the
+        # old one. getattr re-reads _write_task afterwards, catching any it just created.
+        for task_attr in ("_poll_task", "_write_task"):
+            task = getattr(self, task_attr)
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                setattr(self, task_attr, None)
+
+    def _link_is_stale(self) -> bool:
+        """True when the link claims to be connected but reads have stopped succeeding."""
+        last = self.controller.last_modbus_success
+        if last is None:
+            return False
+        stale_after = max(120.0, float(max(self.controller.poll_speed.values())) * 3)
+        return (datetime.now(UTC) - last).total_seconds() > stale_after
+
+    def _expected_offline_at_night(self) -> bool:
+        """True when the datalogger is expected to be offline because it's night.
+
+        Solar inverters normally power off overnight, so a stale/absent Modbus
+        link then is expected rather than a fault (issue #465). Opt-in via
+        CONF_SUPPRESS_NIGHT_OFFLINE_ISSUE since not every setup is PV-only.
+
+        "Night" is widened by _NIGHT_GRACE on both sides: inverters shut down
+        before sunset and only wake once irradiance picks up well after sunrise.
+        Computed from the HA home location, so the sun integration isn't needed.
+        """
+        if not self._suppress_night_issue:
+            return False
+        now = datetime.now(UTC)
+        return not (sun.is_up(self.hass, now - _NIGHT_GRACE) and sun.is_up(self.hass, now + _NIGHT_GRACE))
+
+    def _update_connection_issue(self, unreachable: bool) -> None:
+        """Raise/clear the 'datalogger unreachable' repair issue for this entry."""
+        if self._entry_id is None:
+            return
+        issue_id = f"datalogger_unreachable_{self._entry_id}"
+        if unreachable:
+            if self._expected_offline_at_night():
+                # Also clears an issue raised before dusk, so it doesn't linger
+                # all night just because suppression only started applying now.
+                if self._issue_raised is not False:
+                    ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+                    self._issue_raised = False
+                return
+            self._issue_raised = True
+            last = self.controller.last_modbus_success
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="datalogger_unreachable",
+                translation_placeholders={
+                    "host": str(self.controller.host),
+                    "last_success": last.isoformat(timespec="seconds") if last else "unknown",
+                },
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            self._issue_raised = False
+
+    async def _check_serial_slave_id(self) -> None:
+        """Raise a repair issue when a serial inverter only answers at unit 1.
+
+        Serial requests used to go to unit 1 whatever slave ID was configured, so
+        an entry with the wrong slave ID kept working. Now that requests go to the
+        configured slave, such an entry gets no data. While the configured slave
+        has never answered, see whether unit 1 does.
+        """
+        if self._slave_id_checked or self._entry_id is None:
+            return
+        controller = self.controller
+        issue_id = f"serial_slave_id_{self._entry_id}"
+        if controller.connection_type != CONN_TYPE_SERIAL or controller.device_id == 1 or controller.has_answered:
+            # Also clears the issue once the entry is reconfigured or its slave answers.
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            self._slave_id_checked = True
+            return
+        if any(other is not controller and other.connection_id == controller.connection_id and other.device_id == 1 for other in iter_controllers(self.hass)):
+            # Unit 1 is another inverter configured on this bus; an answer proves nothing.
+            # Not settled: that entry may be removed later.
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            self._slave_id_issue_raised = False
+            return
+        if self._slave_id_issue_raised:
+            return
+        if self._polling_since is None or time.monotonic() - self._polling_since < _SLAVE_PROBE_AFTER.total_seconds():
+            return
+        if not await controller.async_unit_answers(1):
+            # Nothing at unit 1 either (asleep, wiring, ...); check again next time.
+            return
+        self._slave_id_issue_raised = True
+        _LOGGER.warning(
+            "(%s.%s) No answer from slave ID %s, but a device answers at slave ID 1. If that is this inverter, reconfigure the entry with slave ID 1.",
+            controller.host,
+            controller.slave,
+            controller.device_id,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key="serial_slave_id",
+            translation_placeholders={"port": str(controller.connection_id), "slave": str(controller.device_id)},
+        )
 
     async def check_connection(self, now=None):
         """Ensure the Modbus controller is connected, retrying on failure.
@@ -191,31 +358,61 @@ class DataRetrieval:
         if self.connection_check:
             return
 
+        # Re-entrancy guard: must be released on every exit path, otherwise the
+        # periodic watchdog (and startup poll) silently stops reconnecting after
+        # the first "already connected" tick — leaving the integration offline
+        # until a manual reload. Use try/finally so it is always reset.
         self.connection_check = True
+        try:
+            await self._check_serial_slave_id()
 
-        # Emit controller status (dispatcher — not persisted to recorder)
-        notify_register_update(self.hass, self.controller, 90005, self.controller.enabled)
+            # Emit controller status (dispatcher — not persisted to recorder)
+            notify_register_update(self.hass, self.controller, 90005, self.controller.enabled)
 
-        if self.controller.connected():
-            if self.first_poll:
-                await self.modbus_update_all()
-                self.first_poll = False
-            return
+            if self.controller.connected():
+                if self.first_poll:
+                    await self.modbus_update_all()
+                    self.first_poll = False
+                if not self._link_is_stale():
+                    self._update_connection_issue(False)
+                    return
+                # The socket claims to be connected but reads have stopped
+                # succeeding — a half-open TCP link (e.g. the WiFi datalogger
+                # slept overnight and the stack never noticed, issue #411).
+                # Force-close so the loop below establishes a fresh connection.
+                _LOGGER.log(
+                    logging.DEBUG if self._expected_offline_at_night() else logging.WARNING,
+                    f"⚠️({self.controller.host}.{self.controller.slave}) Modbus link looks half-open: "
+                    f"no successful read since {self.controller.last_modbus_success}; forcing a reconnect.",
+                )
+                self._update_connection_issue(True)
+                self.controller.force_close()
 
-        retry_delay = 0.5
-        while not self.controller.connected():
-            try:
-                if await self.controller.connect():
-                    _LOGGER.info(f"✅({self.controller.host}.{self.controller.slave}) Modbus controller connected successfully.")
+            retry_delay = 0.5
+            while not self.controller.connected() and not self._stopping:
+                try:
+                    if await self.controller.connect():
+                        _LOGGER.info(f"✅({self.controller.host}.{self.controller.slave}) Modbus controller connected successfully.")
+                        self._update_connection_issue(False)
+                        break
+                    _LOGGER.debug(f"⚠️({self.controller.host}.{self.controller.slave}) Modbus connection failed, retrying in {retry_delay:.2f} seconds...")
+                except Exception as e:
+                    # Expected every retry overnight when the inverter is off; don't spam the log.
+                    _LOGGER.log(
+                        logging.DEBUG if self._expected_offline_at_night() else logging.ERROR,
+                        f"❌({self.controller.host}.{self.controller.slave}) Connection error : {e}",
+                    )
+
+                # Persistent failure (not a single blip) -> surface a repair issue
+                if self.controller.connect_failures >= _ISSUE_AFTER_FAILURES:
+                    self._update_connection_issue(True)
+
+                if self._stopping:
                     break
-                _LOGGER.debug(f"⚠️({self.controller.host}.{self.controller.slave}) Modbus connection failed, retrying in {retry_delay:.2f} seconds...")
-            except Exception as e:
-                _LOGGER.error(f"❌({self.controller.host}.{self.controller.slave}) Connection error : {e}")
-
-            await asyncio.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, 30)
-
-        self.connection_check = False
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 30)
+        finally:
+            self.connection_check = False
 
     async def poll_controller(self, event=None):
         """Poll the Modbus controller for data, retrying until success.
@@ -235,6 +432,7 @@ class DataRetrieval:
         if event is not None:
             self._startup_unsub = None
 
+        self._polling_since = time.monotonic()
         await self.check_connection()
 
         # Start periodic polling
@@ -257,7 +455,7 @@ class DataRetrieval:
             )
         )
 
-        self.hass.create_task(self.controller.process_write_queue())
+        self._write_task = self.hass.async_create_task(self.controller.process_write_queue())
 
     async def modbus_update_all(self):
         """Updates all sensor groups regardless of their poll speed.
@@ -331,7 +529,7 @@ class DataRetrieval:
         Returns:
             None
         """
-        if not self.controller.enabled or not self.controller.connected():
+        if not self._can_poll():
             return
 
         group_hash = frozenset({group.start_register for group in groups})
@@ -378,6 +576,14 @@ class DataRetrieval:
                                 f"⚠️ Received None for register {start_register} - {end_register}, "
                                 f"for ({self.controller.host}.{self.controller.slave}), skipping."
                             )
+                        if not self._can_poll():
+                            # A failed read closes the link. Reading the remaining groups would
+                            # each retry the connection and fail again (issue #478); leave
+                            # reconnection to the check_connection watchdog.
+                            _LOGGER.debug(
+                                f"⚠️ Link to ({self.controller.host}.{self.controller.slave}) down or stopping, skipping remaining {speed.name} groups."
+                            )
+                            break
                         continue
                     if len(values) != count:
                         _LOGGER.debug(
@@ -393,8 +599,8 @@ class DataRetrieval:
 
                 total_duration = time.perf_counter() - total_start_time
                 _LOGGER.debug(f"✅ {speed.name} update completed in {total_duration:.4f}s")
-        except Exception as e:
-            _LOGGER.debug("exception caught: %s", e)
+        except Exception:
+            _LOGGER.warning("(%s.%s) Unexpected error during %s poll", self.controller.host, self.controller.slave, speed.name, exc_info=True)
         finally:
             del self.poll_updating[speed][group_hash]  # ✅ Reset only this group set
 

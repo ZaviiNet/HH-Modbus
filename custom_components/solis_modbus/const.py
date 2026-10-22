@@ -33,3 +33,55 @@ DEFAULT_BAUDRATE = 9600
 DEFAULT_BYTESIZE = 8
 DEFAULT_PARITY = "N"
 DEFAULT_STOPBITS = 1
+
+# Modbus exception code 2: the slave has no register at the requested address.
+# Distinguishes "you asked for the wrong thing" from "the read failed".
+MODBUS_ILLEGAL_DATA_ADDRESS = 2
+
+# Time-of-use function version (input register 33289, protocol Ver3.4 p18).
+# 0xAA55 = "Optimized Revenue V2": TOU runs off the 43707 period switches, and
+# 43110 bit 1 (the V1 enable) is acknowledged but cleared by the firmware within
+# ~15 s, so it can never stick (issue #475, bench-verified on an S6-EH1P).
+TOU_VERSION_REGISTER = 33289
+TOU_VERSION_V2 = 0xAA55
+
+# Poll profiles (issue #457): how much of the register map gets polled.
+#
+# FULL      — every group the inverter's features allow.
+# ESSENTIAL — the core power-flow groups only (issue #412), no 43xxx settings
+#             groups, so writable entities are not created.
+# EXTREME   — live meter/CT + PV only, for tight control loops (issue #451).
+#             Small enough that a 2s fast interval is realistic: each group is
+#             one Modbus frame and the Solis spec requires >300ms between frames,
+#             so a full ~11-group pass can never be that fast.
+POLL_PROFILE_FULL = "full"
+POLL_PROFILE_ESSENTIAL = "essential"
+POLL_PROFILE_EXTREME = "extreme"
+
+CONF_POLL_PROFILE = "poll_profile"
+CONF_EXTREME_INCLUDE_BATTERY = "extreme_include_battery"
+CONF_EXTREME_INCLUDE_SMART_PORT = "extreme_include_smart_port"
+
+# Skip the "datalogger unreachable" repair issue while the sun is below the
+# horizon (issue #465): solar inverters normally power off overnight, so a
+# stale/absent Modbus link then is expected rather than a fault. Opt-in
+# because not everyone's setup is PV-only (e.g. battery/generator-backed
+# installs may legitimately expect to stay reachable at night).
+CONF_SUPPRESS_NIGHT_OFFLINE_ISSUE = "suppress_night_offline_issue"
+
+# Write HA's clock to the inverter RTC (43000-43005) when it drifts (issue #516).
+# On by default to keep existing behaviour; turning it off drops the "Last Clock
+# Adjustment" sensor, the only thing that writes without a user action, so
+# monitoring-only installs never touch the inverter.
+CONF_CLOCK_SYNC = "clock_sync"
+
+POLL_PROFILES = {
+    POLL_PROFILE_FULL: "Full (all sensors)",
+    POLL_PROFILE_ESSENTIAL: "Essential only (reduce datalogger load)",
+    POLL_PROFILE_EXTREME: "Extreme (meter/CT + PV live only, for control loops)",
+}
+
+# Minimum fast-poll interval. The default floor protects the bus for everyone;
+# extreme mode polls few enough frames that a tighter loop is safe.
+POLL_INTERVAL_FAST_MIN = 10
+POLL_INTERVAL_FAST_MIN_EXTREME = 2

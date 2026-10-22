@@ -2,6 +2,7 @@ from custom_components.solis_modbus.data.enums import InverterType
 
 
 def get_switch_sensors(inverter_config):
+    """Return switch sensor definitions supported by the inverter configuration."""
     switch_sensors = [
         {
             "register": 90005,
@@ -11,13 +12,14 @@ def get_switch_sensors(inverter_config):
         }
     ]
 
-    if inverter_config.type == InverterType.HYBRID:
+    if inverter_config.type in (InverterType.HYBRID, InverterType.ENERGY):
         switch_sensors.extend(
             [
                 {
+                    # Remote inverter on/off (issue #476): 0xBE = on, 0xDE = off.
                     "register": 43007,
                     "entities": [
-                        {"name": "Power State", "on_value": 190, "off_value": 222},
+                        {"name": "Inverter Power (On/Off)", "on_value": 190, "off_value": 222},
                     ],
                 },
                 {
@@ -27,21 +29,51 @@ def get_switch_sensors(inverter_config):
                     ],
                 },
                 {
+                    # Gate for the instant AC output clamp (43081, x10 W). GrugBus
+                    # write-verified: 0xAA enables the limit, 0x55 disables (100%).
+                    "register": 43070,
+                    "entities": [
+                        {"name": "Output Limit Gate", "on_value": 170, "off_value": 85},
+                    ],
+                },
+                {
                     "register": 43110,
                     "entities": [
-                        # Adheres to RS485_MODBUS ESINV-33000ID Hybrid Inverter V3.2 / Appendix 8
+                        # Adheres to RS485_MODBUS ESINV-33000ID Hybrid Inverter V3.2 / Appendix 8.
+                        # NOTE: Self-Use must NOT clear bit 4 — Reserve/Backup is bit 4 as a
+                        # modifier on Self-Use in every SolisCloud capture (17/49/51).
                         {"bit_position": 0, "name": "Self-Use Mode", "conflicts_with": [2, 6, 11]},
-                        {"bit_position": 1, "name": "Time of Use", "requires_any": [0, 6]},
-                        {"bit_position": 2, "name": "Off-Grid Mode", "conflicts_with": [0, 1, 6, 11]},
+                        # V1 TOU enable: unavailable on V2 firmware, which clears it (issue #475).
+                        {"bit_position": 1, "name": "Time of Use", "requires_any": [0, 6], "tou_v1": True},
+                        {"bit_position": 2, "name": "Off-Grid Mode", "conflicts_with": [0, 1, 4, 6, 11]},
                         {"bit_position": 3, "name": "Battery Wakeup Switch"},
-                        {"bit_position": 4, "name": "Reserve Battery Mode", "conflicts_with": [11]},
+                        {"bit_position": 4, "name": "Reserve Battery Mode", "conflicts_with": [2, 11], "requires": [0]},
+                        # Doc literally says "0=Allow 1=Not allow" for bit 5, but every
+                        # field-verified source (SolisCloud writes 33/35/49/51/96/98) has the
+                        # OPPOSITE: bit set = grid charging allowed. Keep non-inverted.
                         {"bit_position": 5, "name": "Allow Grid to Charge the Battery"},
                         {"bit_position": 6, "name": "Feed-In Priority Mode", "conflicts_with": [0, 11]},
                         {"bit_position": 7, "name": "Batt OVC"},
                         {"bit_position": 8, "name": "Battery Forcecharge Peakshaving"},
                         {"bit_position": 9, "name": "Battery Current Correction"},
                         {"bit_position": 10, "name": "Battery Healing Mode"},
-                        {"bit_position": 11, "name": "Peak Shaving Mode", "conflicts_with": [0, 4, 6]},
+                        # TOU (1) and Off-Grid (2) must not survive entering Peak Shaving:
+                        # the EA1P cloud value is exactly 2080 = bits 5+11 (issue #413).
+                        {"bit_position": 11, "name": "Peak Shaving Mode", "conflicts_with": [0, 1, 2, 4, 6]},
+                    ],
+                },
+                {
+                    # S5-EH1P backup/EPS supply enable.
+                    # Bench verified on S5-EH1P5K-L:
+                    # 0 = Backup Supply OFF
+                    # 1 = Backup Supply ON
+                    "register": 43111,
+                    "entities": [
+                        {
+                            "name": "Backup Supply",
+                            "on_value": 1,
+                            "off_value": 0,
+                        },
                     ],
                 },
                 {
@@ -156,7 +188,29 @@ def get_switch_sensors(inverter_config):
                 {
                     "register": 43292,
                     "entities": [
-                        {"name": "Flexible Export Enabling Switch", "on_value": 170},
+                        # SAPN (South Australia) Flexible Export execution switch: 0x00AA on,
+                        # 0x0000 off — the spec marks every other value invalid. NOT the AA/55
+                        # pair of 3069: 0x55 belongs to the separate "setting allowed" gate
+                        # (string 3178), and writing it here is ignored, leaving the switch
+                        # stuck on with export capped at 43291 (#499). Off-by-default in the
+                        # registry: it only applies to SAPN sites.
+                        {"name": "Flexible Export Enabling Switch", "on_value": 170, "off_value": 0, "registry_enabled": False},
+                    ],
+                },
+                {
+                    # Register 44280 BIT04-BIT07 is a 4-bit "PV Control" field where
+                    # 0 = invalid (default, PV operates normally) and 1 = PV shutdown.
+                    # Setting bit_position=4 writes that nibble to value 1 when ON
+                    # and back to 0 when OFF, leaving the AC/battery port bits
+                    # (BIT00-BIT03) untouched.
+                    # NOTE: this register reverts to 0 after the RC Timeout
+                    # (register 43282, default 5 minutes) unless refreshed.
+                    "register": 44280,
+                    "entities": [
+                        # keep_alive: re-write inside the RC-timeout window while ON so
+                        # the shutdown holds (negative-price curtailment). If HA dies,
+                        # the RC timeout reverts the register and PV resumes — fail-safe.
+                        {"bit_position": 4, "name": "PV Shutdown", "keep_alive": True},
                     ],
                 },
                 {

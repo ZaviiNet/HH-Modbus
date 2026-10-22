@@ -8,11 +8,12 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from custom_components.solis_modbus import ModbusController
-from custom_components.solis_modbus.const import CONTROLLER, DOMAIN, REGISTER, SLAVE, TIME_ENTITIES, VALUE
+from custom_components.solis_modbus.const import CONTROLLER, REGISTER, SLAVE, VALUE
 from custom_components.solis_modbus.helpers import (
     cache_get,
     get_controller_from_entry,
     is_correct_controller,
+    is_essential_only,
     register_update_signal,
     unique_id_generator,
 )
@@ -20,10 +21,18 @@ from custom_components.solis_modbus.sensor_data.time_sensors import get_time_sen
 
 _LOGGER = logging.getLogger(__name__)
 
+# Serialize control writes — a single Modbus link can't take concurrent writes.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_devices):
     """Set up the time platform."""
     modbus_controller: ModbusController = get_controller_from_entry(hass, config_entry)
+
+    if is_essential_only(config_entry):
+        # Read-only mode (#149): charge/discharge slot registers aren't polled — skip.
+        _LOGGER.info("Essential-only mode: time entities suppressed (read-only)")
+        return
 
     inverter_config = modbus_controller.inverter_config
 
@@ -33,7 +42,7 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_devices):
 
     for entity_definition in time_definitions:
         time_entities.append(SolisTimeEntity(hass, modbus_controller, entity_definition))
-    hass.data[DOMAIN][TIME_ENTITIES] = time_entities
+    config_entry.runtime_data.entities["time"] = time_entities
     async_add_devices(time_entities, True)
 
 
@@ -97,6 +106,8 @@ class SolisTimeEntity(RestoreSensor, TimeEntity):
                     updated_value = value
                 else:
                     updated_value = datetime.now(UTC)
+            elif value is None:
+                return  # nothing usable to decode; int(None) would raise in the dispatcher
             else:
                 updated_value = int(value)
             _LOGGER.debug(f"Sensor update received, register = {updated_register}, value = {updated_value}")

@@ -1,0 +1,25 @@
+name: AI PR Agent
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, edited, synchronize]
+jobs:
+  pr_agent_job:
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    runs-on: ubuntu-latest
+    name: Generate PR descriptions and labels
+    steps:
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@main
+        env:
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "false"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "false"
+          PR_DESCRIPTION.GENERATE_AI_TITLE: "true"
+          PR_DESCRIPTION.PUBLISH_LABELS: "true"
+          PR_REVIEWER.ENABLE_AUTO_APPROVAL: "false"

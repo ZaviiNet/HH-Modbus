@@ -25,6 +25,11 @@
           "poll_interval_fast": "Fast Poll Interval (seconds)",
           "poll_interval_normal": "Normal Poll Interval (seconds)",
           "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "poll_profile": "Poll profile (how much of the register map is polled)",
+          "extreme_include_battery": "Extreme: also poll battery/load group (SOC, load, battery power)",
+          "extreme_include_smart_port": "Extreme: also poll Smart Port AC power (phase A/B/C, Smart Port models only)",
+          "suppress_night_offline_issue": "Suppress 'datalogger unreachable' repair issue while the sun is below the horizon",
+          "clock_sync": "Automatically correct inverter clock drift (writes the inverter clock; turn off for read-only monitoring)",
           "identification": "Identification Name",
           "inverter_serial": "Inverter Serial",
           "has_v2": "Updated to V2 Firmware",
@@ -33,7 +38,9 @@
           "has_parallel": "Parallel inverter operation (multiple units)",
           "has_battery": "Has Battery Storage",
           "has_hv_battery": "Has HV Battery Storage (100v+)",
-          "has_generator": "Has Generator"
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Second smart meter installed (Grid + PV inverter dual-meter setup)",
+          "has_epm": "EPM / export power manager installed (36xxx meter registers)"
         }
       },
       "reconfigure": {
@@ -52,6 +59,11 @@
           "poll_interval_fast": "Fast Poll Interval (seconds)",
           "poll_interval_normal": "Normal Poll Interval (seconds)",
           "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "poll_profile": "Poll profile (how much of the register map is polled)",
+          "extreme_include_battery": "Extreme: also poll battery/load group (SOC, load, battery power)",
+          "extreme_include_smart_port": "Extreme: also poll Smart Port AC power (phase A/B/C, Smart Port models only)",
+          "suppress_night_offline_issue": "Suppress 'datalogger unreachable' repair issue while the sun is below the horizon",
+          "clock_sync": "Automatically correct inverter clock drift (writes the inverter clock; turn off for read-only monitoring)",
           "identification": "Identification Name",
           "inverter_serial": "Inverter Serial",
           "has_v2": "Updated to V2 Firmware",
@@ -60,13 +72,21 @@
           "has_parallel": "Parallel inverter operation (multiple units)",
           "has_battery": "Has Battery Storage",
           "has_hv_battery": "Has HV Battery Storage (100v+)",
-          "has_generator": "Has Generator"
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Second smart meter installed (Grid + PV inverter dual-meter setup)",
+          "has_epm": "EPM / export power manager installed (36xxx meter registers)"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect, please check your settings.",
-      "unknown": "Unexpected error occurred."
+      "unknown": "Unexpected error occurred.",
+      "invalid_model": "Invalid or unknown inverter model. Please select a model from the list.",
+      "serial_required": "Inverter serial number is required.",
+      "model_required": "Please select an inverter model.",
+      "tcp_port_closed": "Nothing is accepting Modbus connections on that address and port. The device may be reachable (it answers ping) but not serving Modbus — check that Modbus TCP is enabled on the datalogger. Recent Solis logger firmware is known to close local port 502; an RS485-to-TCP bridge is a workaround.",
+      "serial_port_unsupported": "This serial port can't be used. Use a device path (e.g. /dev/ttyUSB0), a socket:// or rfc2217:// gateway, an ESPHome serial proxy such as Home Assistant Connect AUX-2 (Home Assistant 2026.5 or newer), or the TCP connection type.",
+      "poll_interval_below_floor": "Fast poll interval is below the minimum for the selected poll profile. Only the extreme profile allows intervals below 10s (minimum 2s)."
     },
     "abort": {
       "already_configured": "This device is already configured."
@@ -81,6 +101,11 @@
           "poll_interval_fast": "Fast Poll Interval (seconds)",
           "poll_interval_normal": "Normal Poll Interval (seconds)",
           "poll_interval_slow": "Slow Poll Interval (seconds)",
+          "poll_profile": "Poll profile (how much of the register map is polled)",
+          "extreme_include_battery": "Extreme: also poll battery/load group (SOC, load, battery power)",
+          "extreme_include_smart_port": "Extreme: also poll Smart Port AC power (phase A/B/C, Smart Port models only)",
+          "suppress_night_offline_issue": "Suppress 'datalogger unreachable' repair issue while the sun is below the horizon",
+          "clock_sync": "Automatically correct inverter clock drift (writes the inverter clock; turn off for read-only monitoring)",
           "model": "Inverter Model",
           "has_v2": "Updated to V2 Firmware",
           "has_pv": "Has PV (Solar Panels)",
@@ -91,9 +116,14 @@
           "has_generator": "Has Generator",
           "phases": "Phases",
           "connection": "Connection Type",
-          "inverter_serial": "Inverter Serial"
+          "inverter_serial": "Inverter Serial",
+          "has_dual_meter": "Second smart meter installed (Grid + PV inverter dual-meter setup)",
+          "has_epm": "EPM / export power manager installed (36xxx meter registers)"
         }
       }
+    },
+    "error": {
+      "poll_interval_below_floor": "Fast poll interval is below the minimum for the selected poll profile. Only the extreme profile allows intervals below 10s (minimum 2s)."
     }
   },
   "services": {
@@ -115,20 +145,6 @@
         }
       }
     },
-    "solis_read_register": {
-      "name": "Read register",
-      "description": "Writes a value to a holding register",
-      "fields": {
-        "address": {
-          "name": "Address",
-          "description": "Address to write to"
-        },
-        "host": {
-          "name": "Inverter",
-          "description": "Inverter IP (only required if you have multiple inverters)"
-        }
-      }
-    },
     "solis_write_time": {
       "name": "Change the time of a entity",
       "description": "Sets the time of the entity to the provided one",
@@ -142,6 +158,44 @@
           "description": "Time in HH:MM or HH:MM:SS"
         }
       }
+    },
+    "solis_read_register": {
+      "name": "Read register",
+      "description": "Reads one or more registers and returns the raw values (register discovery / debugging)"
+    },
+    "solis_force_battery_charge": {
+      "name": "Force battery charge",
+      "description": "Force the battery to charge (hybrid inverters); reverts after the timeout"
+    },
+    "solis_force_battery_discharge": {
+      "name": "Force battery discharge",
+      "description": "Force the battery to discharge (hybrid inverters); reverts after the timeout"
+    },
+    "solis_stop_force_charge_discharge": {
+      "name": "Stop force charge/discharge",
+      "description": "Cancel an active force charge or discharge"
+    },
+    "solis_dispatch": {
+      "name": "Remote dispatch",
+      "description": "Real-time inverter dispatch: goal-seeking grid/battery control with inverter-side failsafe"
+    },
+    "solis_dispatch_stop": {
+      "name": "Stop remote dispatch",
+      "description": "Release dispatch — the inverter returns to normal operation immediately"
+    },
+    "solis_dispatch_schedule": {
+      "name": "Program dispatch schedule period",
+      "description": "Write one of six inverter-resident scheduled dispatch periods (survives HA restarts)"
+    }
+  },
+  "issues": {
+    "datalogger_unreachable": {
+      "title": "Solis datalogger unreachable",
+      "description": "No successful Modbus read from {host} since {last_success}. The WiFi datalogger may be asleep, powered off or in a half-open state; the integration keeps retrying with backoff. Power-cycle the datalogger if this persists."
+    },
+    "serial_slave_id": {
+      "title": "Solis inverter not answering at slave ID {slave}",
+      "description": "The inverter on {port} doesn't answer at its configured Modbus slave ID {slave}, but a device on the bus answers at slave ID 1. Older versions of this integration sent every serial (RS485) request to slave ID 1 whatever ID was configured, so this setup may have worked until now. If the inverter is at slave ID 1, reconfigure the integration entry and set the slave ID to 1."
     }
   }
 }

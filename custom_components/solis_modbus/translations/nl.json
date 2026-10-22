@@ -25,6 +25,11 @@
           "poll_interval_fast": "Snel Poll Interval (seconden)",
           "poll_interval_normal": "Normaal Poll Interval (seconden)",
           "poll_interval_slow": "Langzaam Poll Interval (seconden)",
+          "poll_profile": "Pollprofiel (hoeveel van de registerkaart wordt gepolld)",
+          "extreme_include_battery": "Extreem: poll ook batterij-/belastingsgroep (SOC, belasting, batterijvermogen)",
+          "extreme_include_smart_port": "Extreem: ook Smart Port AC-vermogen uitlezen (fase A/B/C, alleen modellen met Smart Port)",
+          "suppress_night_offline_issue": "Onderdruk de 'datalogger onbereikbaar'-reparatiemelding zolang de zon onder de horizon staat",
+          "clock_sync": "Klokafwijking van de omvormer automatisch corrigeren (schrijft de omvormerklok; uitschakelen voor alleen-lezen monitoring)",
           "identification": "Identificatie Naam",
           "inverter_serial": "Inverter Serial",
           "has_v2": "Updated to V2 Firmware",
@@ -33,7 +38,9 @@
           "has_parallel": "Parallel inverter operation (multiple units)",
           "has_battery": "Has Battery Storage",
           "has_hv_battery": "Has HV Battery Storage (100v+)",
-          "has_generator": "Has Generator"
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Tweede slimme meter geïnstalleerd (Net + PV-omvormer dubbele-meteropstelling)",
+          "has_epm": "EPM / exportvermogensbeheerder geïnstalleerd (36xxx-meterregisters)"
         }
       },
       "reconfigure": {
@@ -52,6 +59,11 @@
           "poll_interval_fast": "Snel Poll Interval (seconden)",
           "poll_interval_normal": "Normaal Poll Interval (seconden)",
           "poll_interval_slow": "Langzaam Poll Interval (seconden)",
+          "poll_profile": "Pollprofiel (hoeveel van de registerkaart wordt gepolld)",
+          "extreme_include_battery": "Extreem: poll ook batterij-/belastingsgroep (SOC, belasting, batterijvermogen)",
+          "extreme_include_smart_port": "Extreem: ook Smart Port AC-vermogen uitlezen (fase A/B/C, alleen modellen met Smart Port)",
+          "suppress_night_offline_issue": "Onderdruk de 'datalogger onbereikbaar'-reparatiemelding zolang de zon onder de horizon staat",
+          "clock_sync": "Klokafwijking van de omvormer automatisch corrigeren (schrijft de omvormerklok; uitschakelen voor alleen-lezen monitoring)",
           "identification": "Identificatie Naam",
           "inverter_serial": "Inverter Serial",
           "has_v2": "Updated to V2 Firmware",
@@ -60,13 +72,21 @@
           "has_parallel": "Parallel inverter operation (multiple units)",
           "has_battery": "Has Battery Storage",
           "has_hv_battery": "Has HV Battery Storage (100v+)",
-          "has_generator": "Has Generator"
+          "has_generator": "Has Generator",
+          "has_dual_meter": "Tweede slimme meter geïnstalleerd (Net + PV-omvormer dubbele-meteropstelling)",
+          "has_epm": "EPM / exportvermogensbeheerder geïnstalleerd (36xxx-meterregisters)"
         }
       }
     },
     "error": {
       "cannot_connect": "Verbinding mislukt, controleer uw instellingen.",
-      "unknown": "Onverwachte fout opgetreden."
+      "unknown": "Onverwachte fout opgetreden.",
+      "invalid_model": "Ongeldig of onbekend omvormermodel. Selecteer een model uit de lijst.",
+      "serial_required": "Het serienummer van de omvormer is verplicht.",
+      "model_required": "Selecteer een omvormermodel.",
+      "tcp_port_closed": "Er accepteert niets Modbus-verbindingen op dat adres en die poort. Het apparaat is mogelijk bereikbaar (het antwoordt op ping) maar biedt geen Modbus aan — controleer of Modbus TCP is ingeschakeld op de datalogger. Van recente Solis-loggerfirmware is bekend dat deze lokale poort 502 sluit; een RS485-naar-TCP-bridge is een tijdelijke oplossing.",
+      "serial_port_unsupported": "Deze seriële poort kan niet worden gebruikt. Gebruik een apparaatpad (bijv. /dev/ttyUSB0), een socket://- of rfc2217://-gateway, een ESPHome seriële proxy zoals Home Assistant Connect AUX-2 (Home Assistant 2026.5 of nieuwer), of het verbindingstype TCP.",
+      "poll_interval_below_floor": "Het snelle pollinterval ligt onder het minimum voor het gekozen profiel. Alleen het extreme profiel staat intervallen onder 10s toe (minimaal 2s)."
     },
     "abort": {
       "already_configured": "Dit apparaat is al geconfigureerd."
@@ -81,6 +101,11 @@
           "poll_interval_fast": "Snel Poll Interval (seconden)",
           "poll_interval_normal": "Normaal Poll Interval (seconden)",
           "poll_interval_slow": "Langzaam Poll Interval (seconden)",
+          "poll_profile": "Pollprofiel (hoeveel van de registerkaart wordt gepolld)",
+          "extreme_include_battery": "Extreem: poll ook batterij-/belastingsgroep (SOC, belasting, batterijvermogen)",
+          "extreme_include_smart_port": "Extreem: ook Smart Port AC-vermogen uitlezen (fase A/B/C, alleen modellen met Smart Port)",
+          "suppress_night_offline_issue": "Onderdruk de 'datalogger onbereikbaar'-reparatiemelding zolang de zon onder de horizon staat",
+          "clock_sync": "Klokafwijking van de omvormer automatisch corrigeren (schrijft de omvormerklok; uitschakelen voor alleen-lezen monitoring)",
           "model": "Omvormer Model",
           "has_v2": "Geüpdatet naar V2 Firmware",
           "has_pv": "Heeft Zonnepanelen (PV)",
@@ -91,9 +116,14 @@
           "connection": "Verbindingstype",
           "inverter_serial": "Inverter Serial",
           "has_ac_coupling": "Has AC Coupling",
-          "has_parallel": "Parallel inverter operation (multiple units)"
+          "has_parallel": "Parallel inverter operation (multiple units)",
+          "has_dual_meter": "Tweede slimme meter geïnstalleerd (Net + PV-omvormer dubbele-meteropstelling)",
+          "has_epm": "EPM / exportvermogensbeheerder geïnstalleerd (36xxx-meterregisters)"
         }
       }
+    },
+    "error": {
+      "poll_interval_below_floor": "Het snelle pollinterval ligt onder het minimum voor het gekozen profiel. Alleen het extreme profiel staat intervallen onder 10s toe (minimaal 2s)."
     }
   },
   "services": {
@@ -115,20 +145,6 @@
         }
       }
     },
-    "solis_read_register": {
-      "name": "Lees register",
-      "description": "Leest een waarde van een register",
-      "fields": {
-        "address": {
-          "name": "Adres",
-          "description": "Adres om te lezen"
-        },
-        "host": {
-          "name": "Omvormer",
-          "description": "Omvormer IP (alleen nodig bij meerdere omvormers)"
-        }
-      }
-    },
     "solis_write_time": {
       "name": "Wijzig de tijd van een entiteit",
       "description": "Stelt de tijd van de entiteit in op de opgegeven waarde",
@@ -142,6 +158,44 @@
           "description": "Tijd in HH:MM of HH:MM:SS"
         }
       }
+    },
+    "solis_read_register": {
+      "name": "Register lezen",
+      "description": "Leest een of meer registers en geeft de ruwe waarden terug (registerverkenning / debuggen)"
+    },
+    "solis_force_battery_charge": {
+      "name": "Batterij geforceerd laden",
+      "description": "Forceert het laden van de batterij (hybride omvormers); stopt na de time-out"
+    },
+    "solis_force_battery_discharge": {
+      "name": "Batterij geforceerd ontladen",
+      "description": "Forceert het ontladen van de batterij (hybride omvormers); stopt na de time-out"
+    },
+    "solis_stop_force_charge_discharge": {
+      "name": "Geforceerd laden/ontladen stoppen",
+      "description": "Annuleert een actief geforceerd laden of ontladen"
+    },
+    "solis_dispatch": {
+      "name": "Externe dispatch",
+      "description": "Realtime dispatch: doelzoekende net-/batterijregeling met failsafe in de omvormer"
+    },
+    "solis_dispatch_stop": {
+      "name": "Stop externe dispatch",
+      "description": "Geeft dispatch vrij — de omvormer keert direct terug naar normale werking"
+    },
+    "solis_dispatch_schedule": {
+      "name": "Programmeer dispatch-schemaperiode",
+      "description": "Schrijft één van zes in de omvormer opgeslagen perioden (overleeft HA-herstarts)"
+    }
+  },
+  "issues": {
+    "datalogger_unreachable": {
+      "title": "Solis-datalogger onbereikbaar",
+      "description": "Geen geslaagde Modbus-uitlezing van {host} sinds {last_success}. De WiFi-datalogger slaapt mogelijk, is uitgeschakeld of half-open; de integratie blijft het met backoff proberen. Herstart de voeding van de datalogger als dit aanhoudt."
+    },
+    "serial_slave_id": {
+      "title": "Solis-omvormer antwoordt niet op slave-ID {slave}",
+      "description": "De omvormer op {port} antwoordt niet op zijn ingestelde Modbus-slave-ID {slave}, maar een apparaat op de bus antwoordt op slave-ID 1. Oudere versies van deze integratie stuurden elk serieel (RS485) verzoek naar slave-ID 1, ongeacht de ingestelde ID, dus deze opstelling heeft mogelijk tot nu toe gewerkt. Staat de omvormer op slave-ID 1, herconfigureer dan de integratie-invoer en stel de slave-ID in op 1."
     }
   }
 }

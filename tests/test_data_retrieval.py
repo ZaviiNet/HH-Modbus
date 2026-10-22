@@ -1,4 +1,5 @@
 import unittest
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.solis_modbus.const import DOMAIN, VALUES
@@ -254,3 +255,113 @@ class TestDataRetrieval(unittest.TestCase):
         # Check if once_group is removed from controller.sensor_groups
         self.assertNotIn(self.once_group, self.controller.sensor_groups)
         self.assertIn(self.normal_group, self.controller.sensor_groups)
+
+
+def _make_stale_watchdog_fixture(last_success):
+    """Build a DataRetrieval with a controller whose link state we fully control."""
+    hass = MagicMock()
+    hass.is_running = False  # don't kick off poll_controller in __init__
+    controller = MagicMock()
+    controller.host = "192.168.1.100"
+    controller.slave = 1
+    controller.device_id = 1
+    controller.poll_speed = {PollSpeed.FAST: 5, PollSpeed.NORMAL: 15, PollSpeed.SLOW: 30}
+    controller.last_modbus_success = last_success
+    controller.connect = AsyncMock(return_value=True)
+    retrieval = DataRetrieval(hass, controller)
+    retrieval.first_poll = False
+    return retrieval, controller
+
+
+async def test_check_connection_stale_link_forces_reconnect():
+    """Issue #411: a half-open socket reports connected() == True while every read
+    fails. Once last_modbus_success is old enough, the watchdog must force-close
+    the client and reconnect instead of trusting the zombie link forever."""
+    retrieval, controller = _make_stale_watchdog_fixture(datetime.now(UTC) - timedelta(minutes=10))
+    # connected: True on the initial check (zombie link), False after force_close
+    controller.connected = MagicMock(side_effect=[True, False])
+
+    with patch("custom_components.solis_modbus.data_retrieval.notify_register_update"):
+        await retrieval.check_connection()
+
+    controller.force_close.assert_called_once()
+    controller.connect.assert_awaited_once()
+
+
+async def test_check_connection_healthy_link_returns_early():
+    """A link with a recent successful read must not be torn down."""
+    retrieval, controller = _make_stale_watchdog_fixture(datetime.now(UTC))
+    controller.connected = MagicMock(return_value=True)
+
+    with patch("custom_components.solis_modbus.data_retrieval.notify_register_update"):
+        await retrieval.check_connection()
+
+    controller.force_close.assert_not_called()
+    controller.connect.assert_not_awaited()
+
+
+async def test_link_is_stale_thresholds():
+    retrieval, controller = _make_stale_watchdog_fixture(None)
+    # No success recorded yet -> not stale (avoid reconnect storm at startup)
+    assert retrieval._link_is_stale() is False
+
+    # Threshold is max(120s, slowest poll speed * 3) = 120s here
+    controller.last_modbus_success = datetime.now(UTC) - timedelta(seconds=60)
+    assert retrieval._link_is_stale() is False
+    controller.last_modbus_success = datetime.now(UTC) - timedelta(seconds=130)
+    assert retrieval._link_is_stale() is True
+
+
+async def test_poll_stops_after_link_drops():
+    """Issue #478: a read that times out closes the link. The remaining groups in the
+    batch must not each retry the connection and log "Not connected"."""
+    retrieval, controller = _make_stale_watchdog_fixture(datetime.now(UTC))
+    controller.enabled = True
+    groups = []
+    for start in (43007, 43128, 43173, 43195):
+        group = MagicMock(spec=SolisSensorGroup)
+        group.poll_speed = PollSpeed.SLOW
+        group.start_register = start
+        group.registrar_count = 1
+        groups.append(group)
+    controller.sensor_groups = list(groups)
+
+    link_up = True
+
+    async def read(start, count):
+        nonlocal link_up
+        if start == 43128:
+            link_up = False  # "No response received" -> controller closes the client
+            return None, None
+        return [1] * count, None
+
+    controller.connected = MagicMock(side_effect=lambda: link_up)
+    controller.async_read_holding_registers_with_exception = AsyncMock(side_effect=read)
+
+    with patch("custom_components.solis_modbus.data_retrieval.notify_register_update"):
+        await retrieval.get_modbus_updates(groups, PollSpeed.SLOW)
+
+    read_starts = [c.args[0] for c in controller.async_read_holding_registers_with_exception.await_args_list]
+    assert read_starts == [43007, 43128]
+    assert retrieval.poll_updating[PollSpeed.SLOW] == {}
+
+
+async def test_poll_continues_after_failure_when_link_up():
+    """A failed group that leaves the link connected must not abort the batch."""
+    retrieval, controller = _make_stale_watchdog_fixture(datetime.now(UTC))
+    controller.enabled = True
+    controller.connected = MagicMock(return_value=True)
+    groups = []
+    for start in (43007, 43128, 43173):
+        group = MagicMock(spec=SolisSensorGroup)
+        group.poll_speed = PollSpeed.SLOW
+        group.start_register = start
+        group.registrar_count = 1
+        groups.append(group)
+    controller.sensor_groups = list(groups)
+    controller.async_read_holding_registers_with_exception = AsyncMock(side_effect=lambda start, count: (None, None) if start == 43128 else ([1] * count, None))
+
+    with patch("custom_components.solis_modbus.data_retrieval.notify_register_update"):
+        await retrieval.get_modbus_updates(groups, PollSpeed.SLOW)
+
+    assert controller.async_read_holding_registers_with_exception.await_count == 3
