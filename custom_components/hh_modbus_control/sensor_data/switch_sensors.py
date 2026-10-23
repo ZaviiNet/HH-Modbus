@@ -182,6 +182,9 @@ def get_switch_sensors(inverter_config):
                     # so a switch left ON keeps forcing charge until turned off.
                     "companion_writes": [43136, 43129, 43282],
                     "keep_alive": True,
+                    # Controlled by HH Solar Manager; keep it available to services
+                    # but hidden in the HA UI to prevent accidental toggling.
+                    "registry_visible": False,
                     "entities": [
                         {"name": "RC Force Battery Charge", "on_value": 1},
                         {"name": "RC Force Battery Discharge", "on_value": 2},

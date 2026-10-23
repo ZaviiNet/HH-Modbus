@@ -151,6 +151,7 @@ class SolisBaseSensor:
         hidden=False,
         enabled=True,
         registry_enabled=True,
+        registry_visible=True,
         category: Category = None,
         min_value: int | None = None,
         max_value: int | None = None,
@@ -194,6 +195,10 @@ class SolisBaseSensor:
         # Registry default only — unlike `enabled`, the register is still polled, so
         # the entity works as soon as a user enables it (and derived sensors keep it).
         self.registry_enabled = registry_enabled
+        # Visible in the entity registry UI by default. Hidden entities stay enabled
+        # and callable by services (e.g. the HH Solar Manager web app), but don't
+        # clutter the dashboard or invite accidental manual changes.
+        self.registry_visible = registry_visible
         self.poll_speed = poll_speed
         self.category = category
         self.identification = identification
@@ -463,6 +468,7 @@ class SolisSensorGroup:
                     hidden=entity.get("hidden", False),
                     editable=entity.get("editable", False),
                     registry_enabled=entity.get("registry_enabled", True),
+                    registry_visible=entity.get("registry_visible", True),
                     max_value=entity.get("max", None),
                     max_source=entity.get("max_source", None),
                     min_value=entity.get("min", 0),

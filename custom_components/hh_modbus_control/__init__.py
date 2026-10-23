@@ -818,6 +818,7 @@ async def _setup_solis_entry(
                 multiplier=entity.get("multiplier", 1),
                 editable=entity.get("editable", False),
                 hidden=entity.get("hidden", False),
+                registry_visible=entity.get("registry_visible", True),
                 category=entity.get("category", None),
                 unique_id=unique_id_generator(controller, entity.get("unique", "reserve")),
             )

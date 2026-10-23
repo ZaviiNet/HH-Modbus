@@ -36,6 +36,8 @@ async def async_setup_entry(hass, config_entry: ConfigEntry, async_add_devices):
                 child_entity.setdefault("companion_writes", main_entity["companion_writes"])
             if "keep_alive" in main_entity:
                 child_entity.setdefault("keep_alive", main_entity["keep_alive"])
+            if "registry_visible" in main_entity:
+                child_entity.setdefault("registry_visible", main_entity["registry_visible"])
             switch_entities.append(SolisBinaryEntity(hass, modbus_controller, child_entity))
 
     config_entry.runtime_data.entities["switch"] = switch_entities

@@ -22,6 +22,7 @@ class SolisSelectEntity(RestoreEntity, SelectEntity):
         self._attr_options = [e["name"] for e in entity_definition["entities"]]
         self._attr_options_raw = entity_definition["entities"]
         self._companion_writes = entity_definition.get("companion_writes") or []
+        self._attr_entity_registry_visible_default = entity_definition.get("registry_visible", True)
         self._has_tou_v1 = any(e.get("tou_v1") for e in self._attr_options_raw)
         self._current_option = None
 

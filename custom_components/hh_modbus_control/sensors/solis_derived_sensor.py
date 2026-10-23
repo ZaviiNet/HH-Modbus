@@ -47,6 +47,7 @@ class SolisDerivedSensor(RestoreSensor, SensorEntity):
         self._attr_native_unit_of_measurement = sensor.unit_of_measurement
         self._attr_available = not sensor.hidden
         self._attr_entity_registry_enabled_default = sensor.enabled and not sensor.hidden
+        self._attr_entity_registry_visible_default = getattr(sensor, "registry_visible", True)
 
         self.is_added_to_hass = False
         self._state = None

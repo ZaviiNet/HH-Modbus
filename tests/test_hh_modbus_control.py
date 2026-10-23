@@ -189,6 +189,16 @@ async def test_solis_setup_and_upstream_features(hass: HomeAssistant):
         force_switch = next(e for e in runtime.entities["switch"] if e.name == "RC Force Battery Charge")
         assert force_switch._companion_writes == (43136, 43129, 43282)
         assert force_switch._keep_alive is True
+        # Hidden from the UI but still enabled and callable by the web app.
+        assert force_switch._attr_entity_registry_visible_default is False
+        assert force_switch._attr_entity_registry_enabled_default is True
+
+        capacity = next(e for e in runtime.entities["number"] if e.name == "Battery Rated Capacity")
+        assert capacity._attr_entity_registry_visible_default is False
+        assert capacity._attr_entity_registry_enabled_default is True
+
+        rc_timeout = next(e for e in runtime.entities["number"] if e.name == "RC Timeout")
+        assert rc_timeout._attr_entity_registry_visible_default is False
 
         assert await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()

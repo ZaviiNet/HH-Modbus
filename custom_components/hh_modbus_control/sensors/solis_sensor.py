@@ -35,6 +35,7 @@ class SolisSensor(RestoreSensor, SensorEntity):
         # Don't register hidden/disabled sensors as enabled entities — otherwise
         # they clutter the UI and recorder as permanently-unavailable entities.
         self._attr_entity_registry_enabled_default = sensor.enabled and not sensor.hidden
+        self._attr_entity_registry_visible_default = getattr(sensor, "registry_visible", True)
         self._attr_entity_category = sensor.entity_category
         self._attr_suggested_display_precision = self.decimal_count(sensor.multiplier)
 

@@ -2204,6 +2204,9 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": "Ah",
                 "editable": True,
+                # BMS battery modes ignore this register (issue #216); only useful
+                # for a user-defined battery. Hidden by default, still available.
+                "registry_visible": False,
                 "default": 200.0,
                 "min": 50.0,
                 # Guess: 4-digit cap, well under the 65535 Ah the register can hold. No source.
@@ -2220,6 +2223,8 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.VOLTAGE,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                # BMS-controlled on lithium batteries; only meaningful for user-defined.
+                "registry_visible": False,
                 "default": 56.0,
                 "min": 40,
                 # Datasheet: LV range 40-48 V (33208). HV widened in dynamic_adjustments.
@@ -2236,6 +2241,8 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.VOLTAGE,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                # BMS-controlled on lithium batteries; only meaningful for user-defined.
+                "registry_visible": False,
                 "default": 48.0,
                 "min": 40,
                 # Datasheet: LV force-charge voltage; HV widened in dynamic_adjustments.
@@ -2374,6 +2381,8 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                # RC internals used by the integration/web app; hidden from the UI.
+                "registry_visible": False,
                 "min": 0,
                 # No "max": protocol ceiling. The shipped 6000 literal was unsourced and
                 # capped a 20 kW SKU (#351); the inverter's AC rating is advisory
@@ -2391,6 +2400,7 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                "registry_visible": False,
                 "min": 0,
                 # No "max": protocol ceiling; inverter rating advisory — see 43128.
                 "max_source": "inverter_rating",
@@ -2406,6 +2416,7 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                "registry_visible": False,
                 "min": 0,
                 # No "max": protocol ceiling; inverter rating advisory — see 43128.
                 "max_source": "inverter_rating",
@@ -2475,6 +2486,8 @@ hybrid_sensors = [
                 "device_class": SensorDeviceClass.POWER,
                 "state_class": SensorStateClass.MEASUREMENT,
                 "editable": True,
+                # RC internals used by the integration/web app; hidden from the UI.
+                "registry_visible": False,
                 "min": 0,
                 # The register #351 was filed against: a 10000 literal stopped an
                 # S6-EH3P20K owner force-charging above half their rating. Rating is
@@ -4226,6 +4239,7 @@ hybrid_sensors = [
                 "multiplier": 1,
                 "unit_of_measurement": UnitOfTime.MINUTES,
                 "editable": True,
+                "registry_visible": False,
                 "default": 5,
                 "min": 1,
                 # Guess: 1-30 min dead-man timeout on remote control. Unsourced.

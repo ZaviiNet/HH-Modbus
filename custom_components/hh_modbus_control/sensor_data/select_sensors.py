@@ -33,6 +33,8 @@ def get_select_sensors(inverter_config):
                 # (43129) and RC timeout (43282) from cache right after enabling realises
                 # the working "combo" sequence reported in issue #352.
                 "companion_writes": [43136, 43129, 43282],
+                # Duplicate RC control used by the web app as a fallback; hidden in UI.
+                "registry_visible": False,
                 "entities": [
                     {"name": "None", "on_value": 0},
                     {"name": "Solis RC Force Battery Charge", "on_value": 1},
